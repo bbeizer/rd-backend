@@ -1,0 +1,24 @@
+{
+  "name": "rd-backend",
+  "version": "1.0.0",
+  "description": "This is the backend code for my chess vairant game",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bbeizer/rd-backend.git"
+  },
+  "author": "Benjamin Beizer",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/bbeizer/rd-backend/issues"
+  },
+  "homepage": "https://github.com/bbeizer/rd-backend#readme",
+  "dependencies": {
+    "dotenv": "^16.4.1",
+    "express": "^4.18.2",
+    "mongoose": "^8.1.1"
+  }
+}
