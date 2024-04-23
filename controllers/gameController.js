@@ -34,3 +34,8 @@ exports.getGameState = async (req, res) => {
 exports.makeMove = async (req, res) => {
   // Logic to update the game state with a new move
 };
+
+exports.deleteAll = async(req, res) =>{
+  const game = await Game.deleteMany({})
+    return res.status(202).json({message: 'success'})
+};

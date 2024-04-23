@@ -1,10 +1,18 @@
 const express = require('express');
-const router = express.Router();
 const gameController = require('../controllers/gameController');
+const router = express.Router();
 
-router.post('/createGame', gameController.createGame);
-router.get('/:id', gameController.getGameById);
-router.get('/games/:id', gameController.getGameState);
-router.put('/games/:id/move', gameController.makeMove);
+// Route to create a new game
+router.post('/', gameController.createGame);
+
+// Routes to get and update the game state by ID
+router.route('/:id')
+  .get(gameController.getGameById) // Get a specific game by ID
+  .patch(gameController.updateGameState); // Update game state
+
+// Route for game moves could potentially be part of the same '/:id' route group if it updates the game state
+router.put('/:id/move', gameController.makeMove);
+
+router.delete('/', gameController.deleteAll)
 
 module.exports = router;
