@@ -8,7 +8,7 @@ router.post('/', gameController.createGame);
 // Routes to get and update the game state by ID
 router.route('/:id')
   .get(gameController.getGameById) // Get a specific game by ID
-  .patch(gameController.updateGameState); // Update game state
+  .patch(gameController.updateGame); // Update game state
 
 // Route for game moves could potentially be part of the same '/:id' route group if it updates the game state
 router.put('/:id/move', gameController.makeMove);

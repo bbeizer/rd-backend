@@ -23,12 +23,24 @@ exports.getGameById = async (req, res) => {
     }
   };
 
-exports.updateGameState = async (req, res) => {
-    //logic
-};
-
-exports.getGameState = async (req, res) => {
-  // Logic to retrieve and send the game state to the client
+exports.updateGame = async (gameId, gameData) => {
+  try {
+    const response = await fetch(`${baseUrl}/games/${gameId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        // Include other headers as needed, e.g., authorization tokens
+      },
+      body: JSON.stringify(gameData),
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Could not update the game:', error);
+    throw error;
+  }
 };
 
 exports.makeMove = async (req, res) => {
