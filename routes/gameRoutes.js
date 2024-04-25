@@ -11,7 +11,7 @@ router.route('/:id')
   .patch(gameController.updateGame); // Update game state
 
 // Route for game moves could potentially be part of the same '/:id' route group if it updates the game state
-router.put('/:id/move', gameController.makeMove);
+//router.put('/:id/move', gameController.makeMove);
 
 router.delete('/', gameController.deleteAll)
 

@@ -23,28 +23,20 @@ exports.getGameById = async (req, res) => {
     }
   };
 
-exports.updateGame = async (gameId, gameData) => {
-  try {
-    const response = await fetch(`${baseUrl}/games/${gameId}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        // Include other headers as needed, e.g., authorization tokens
-      },
-      body: JSON.stringify(gameData),
-    });
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    return await response.json();
-  } catch (error) {
-    console.error('Could not update the game:', error);
-    throw error;
-  }
-};
 
-exports.makeMove = async (req, res) => {
-  // Logic to update the game state with a new move
+exports.updateGame = async (req, res) => {
+  const { id } = req.params; // Get game ID from URL
+  const updates = req.body; // Get updates from request body
+
+  try {
+      const game = await Game.findByIdAndUpdate(id, updates, { new: true });
+      if (!game) {
+          return res.status(404).send({ message: 'Game not found' });
+      }
+      res.json(game);
+  } catch (error) {
+      res.status(500).json({ message: 'Error updating game state', error: error.toString() });
+  }
 };
 
 exports.deleteAll = async(req, res) =>{
