@@ -6,8 +6,8 @@ const gameSchema = new mongoose.Schema({
     enum: ['playing', 'not started', 'completed'],
     default: 'not started'
   },
-  whitePlayerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  blackPlayerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  whitePlayerId: { type: String, ref: 'User' },
+  blackPlayerId: { type: String, ref: 'User' }, 
   turnNumber: {
     type: Number,
     default: 0

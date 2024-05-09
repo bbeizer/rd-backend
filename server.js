@@ -4,8 +4,9 @@ const mongoose = require('mongoose');
 const helmet = require('helmet');
 const cors = require('cors');
 const morgan = require('morgan');
-const authRoutes = require('./routes/authRoutes');
 const gameRoutes = require('./routes/gameRoutes');
+
+const waitingPlayers = [];
 
 const app = express();
 
@@ -21,7 +22,6 @@ mongoose.connect(process.env.DB_URI)
   .catch((err) => console.error(err));
 
 // Routes
-app.use('/api/users', authRoutes);
 app.use('/api/games', gameRoutes);
 
 // Start server
