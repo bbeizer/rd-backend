@@ -4,17 +4,18 @@ const { initializeBoardStatus } = require('../utils/gameInitialization');
 
 
 exports.startOrJoinGame = async (req, res) => {
-    console.log("controller hit")
     try {
         const existingGame = await findOrCreateGame();
         if (isGameFull(existingGame)) {
             return res.status(400).json({ message: 'Game is already full.' });
         }
 
-        const updatedGame = await addPlayerToGame(existingGame, req.body.playerId);
+        const updatedGame = await addPlayerToGame(existingGame, req.body.playerId, req.body.playerName);
         if (isGameFull(updatedGame)){
             updatedGame.status = "playing";
-            await updatedGame.save()
+            await updatedGame.save();
+            queueManager.removeFromQueue(updatedGame.whitePlayerId);
+            queueManager.removeFromQueue(updatedGame.blackPlayerId);
         }
         res.status(200).json({ game: updatedGame, message: 'Player added to existing game.' });
     } catch (error) {
@@ -41,11 +42,13 @@ function isGameFull(game) {
     return game.whitePlayerId && game.blackPlayerId;
 }
 
-async function addPlayerToGame(game, playerId) {
+async function addPlayerToGame(game, playerId, playerName) {
     if (!game.whitePlayerId) {
         game.whitePlayerId = playerId;
+        game.whitePlayerName = playerName; // Set the white player's name
     } else if (!game.blackPlayerId) {
         game.blackPlayerId = playerId;
+        game.blackPlayerName = playerName; // Set the black player's name
     }
     await game.save();
     return game;
