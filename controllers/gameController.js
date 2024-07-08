@@ -10,19 +10,20 @@ exports.startOrJoinGame = async (req, res) => {
             return res.status(400).json({ message: 'Game is already full.' });
         }
 
-        const updatedGame = await addPlayerToGame(existingGame, req.body.playerId, req.body.playerName);
+        const { game: updatedGame, playerColor } = await addPlayerToGame(existingGame, req.body.playerId, req.body.playerName);
         if (isGameFull(updatedGame)){
             updatedGame.status = "playing";
             await updatedGame.save();
             queueManager.removeFromQueue(updatedGame.whitePlayerId);
             queueManager.removeFromQueue(updatedGame.blackPlayerId);
         }
-        res.status(200).json({ game: updatedGame, message: 'Player added to existing game.' });
+        res.status(200).json({ game: updatedGame, playerColor, message: 'Player added to existing game.' });
     } catch (error) {
         console.error("Error processing startOrJoinGame:", error);
         res.status(500).json({ error: 'Error processing your request', details: error.message });
     }
 };
+
 
 async function findOrCreateGame() {
     let game = await Game.findOne({ status: 'not started' });
@@ -43,15 +44,18 @@ function isGameFull(game) {
 }
 
 async function addPlayerToGame(game, playerId, playerName) {
+    let playerColor = null;
     if (!game.whitePlayerId) {
         game.whitePlayerId = playerId;
-        game.whitePlayerName = playerName; // Set the white player's name
+        game.whitePlayerName = playerName;
+        playerColor = 'white';
     } else if (!game.blackPlayerId) {
         game.blackPlayerId = playerId;
-        game.blackPlayerName = playerName; // Set the black player's name
+        game.blackPlayerName = playerName;
+        playerColor = 'black';
     }
     await game.save();
-    return game;
+    return { game, playerColor };  // Return both the game object and the player color
 }
 
 exports.createGame = async (req, res) => {
