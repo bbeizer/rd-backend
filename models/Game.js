@@ -8,8 +8,8 @@ const gameSchema = new mongoose.Schema({
   },
   whitePlayerId: { type: String, ref: 'User' },
   blackPlayerId: { type: String, ref: 'User' },
-  whitePlayerName: String, // Added field to store the name of the white player
-  blackPlayerName: String, // Added field to store the name of the black player
+  whitePlayerName: { type: String },  // Adding white player name
+  blackPlayerName: { type: String },  // Adding black player name
   turnNumber: {
     type: Number,
     default: 0

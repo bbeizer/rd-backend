@@ -47,13 +47,14 @@ async function addPlayerToGame(game, playerId, playerName) {
     let playerColor = null;
     if (!game.whitePlayerId) {
         game.whitePlayerId = playerId;
-        game.whitePlayerName = playerName;
+        game.whitePlayerName = playerName;  // Make sure playerName is correctly captured and passed here
         playerColor = 'white';
-    } else if (!game.blackPlayerId) {
+      } else if (!game.blackPlayerId) {
         game.blackPlayerId = playerId;
-        game.blackPlayerName = playerName;
+        game.blackPlayerName = playerName;  // Make sure playerName is correctly captured and passed here
         playerColor = 'black';
-    }
+      }
+      await game.save();  // Saving the changes
     await game.save();
     return { game, playerColor };  // Return both the game object and the player color
 }
