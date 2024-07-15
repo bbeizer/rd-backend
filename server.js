@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const helmet = require('helmet');
 const cors = require('cors');
 const morgan = require('morgan');
+const path = require('path');
 const gameRoutes = require('./routes/gameRoutes');
 
 const waitingPlayers = [];
