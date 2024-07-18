@@ -11,6 +11,10 @@ const gameSchema = new mongoose.Schema({
     enum: ['black', 'white', null],
     default: null
   },
+  hasMoved: {
+    type: Boolean,
+    default: false  // Set the default value to false
+  },
   whitePlayerId: { type: String, ref: 'User' },
   blackPlayerId: { type: String, ref: 'User' },
   whitePlayerName: { type: String },  // Adding white player name
