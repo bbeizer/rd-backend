@@ -6,6 +6,11 @@ const gameSchema = new mongoose.Schema({
     enum: ['playing', 'not started', 'completed'],
     default: 'not started'
   },
+  winner: {
+    type: String,
+    enum: ['black', 'white', null],
+    default: null
+  },
   whitePlayerId: { type: String, ref: 'User' },
   blackPlayerId: { type: String, ref: 'User' },
   whitePlayerName: { type: String },  // Adding white player name
