@@ -14,12 +14,10 @@ const gameSchema = new mongoose.Schema({
   activePiece: {
     position: {
       type: String,
-      required: true // e.g., 'f6'
     },
     color: {
       type: String,
       enum: ['black', 'white'],
-      required: true
     },
     hasBall: {
       type: Boolean,
