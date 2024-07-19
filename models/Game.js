@@ -15,6 +15,10 @@ const gameSchema = new mongoose.Schema({
     type: Boolean,
     default: false  // Set the default value to false
   },
+  originalSquare: {
+    type: String,
+    default: null
+  },
   whitePlayerId: { type: String, ref: 'User' },
   blackPlayerId: { type: String, ref: 'User' },
   whitePlayerName: { type: String },  // Adding white player name
