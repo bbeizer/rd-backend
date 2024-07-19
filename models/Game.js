@@ -11,6 +11,21 @@ const gameSchema = new mongoose.Schema({
     enum: ['black', 'white', null],
     default: null
   },
+  activePiece: {
+    position: {
+      type: String,
+      required: true // e.g., 'f6'
+    },
+    color: {
+      type: String,
+      enum: ['black', 'white'],
+      required: true
+    },
+    hasBall: {
+      type: Boolean,
+      default: false // Reflects whether the piece currently has the ball
+    }
+  },
   hasMoved: {
     type: Boolean,
     default: false  // Set the default value to false
