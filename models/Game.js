@@ -15,6 +15,11 @@ const gameSchema = new mongoose.Schema({
     position: {
       type: String,
     },
+  movedPiece: {
+    position: {
+      type: String,
+    }
+  },
     color: {
       type: String,
       enum: ['black', 'white'],
