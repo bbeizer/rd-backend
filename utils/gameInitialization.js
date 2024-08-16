@@ -25,9 +25,9 @@ const initializeBoardStatus = () => {
     for (let rowIndex = 0; rowIndex < 8; rowIndex++) {
         for (let colIndex = 0; colIndex < 8; colIndex++) {
             const cellKey = `${String.fromCharCode(97 + colIndex)}${rowIndex + 1}`;
-            const { pieceColor, hasBall, position } = initialSetup(rowIndex, colIndex, cellKey);
+            const { pieceColor, hasBall, position} = initialSetup(rowIndex, colIndex, cellKey);
             if (pieceColor) {
-                initialBoardStatus[cellKey] = { color: pieceColor, hasBall, position: cellKey};
+                initialBoardStatus[cellKey] = { color: pieceColor, hasBall, position: position};
             } else {
                 initialBoardStatus[cellKey] = null;
             }
