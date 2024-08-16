@@ -1,7 +1,7 @@
 // utils/gameInitialization.js
 
 const uuidv4 = require('uuid').v4; 
-const initialSetup = (rowIndex, colIndex) => {
+const initialSetup = (rowIndex, colIndex, cellKey)  => {
     let pieceColor = null;
     let hasBall = false;
     let id = null;  // Default to no ID unless a piece is created
@@ -16,7 +16,7 @@ const initialSetup = (rowIndex, colIndex) => {
         id = uuidv4();  // Assign a unique ID
     }
 
-    return { pieceColor, hasBall, id };
+    return { pieceColor, hasBall, cellKey };
 };
 
 const initializeBoardStatus = () => {
@@ -25,7 +25,7 @@ const initializeBoardStatus = () => {
     for (let rowIndex = 0; rowIndex < 8; rowIndex++) {
         for (let colIndex = 0; colIndex < 8; colIndex++) {
             const cellKey = `${String.fromCharCode(97 + colIndex)}${rowIndex + 1}`;
-            const { pieceColor, hasBall } = initialSetup(rowIndex, colIndex);
+            const { pieceColor, hasBall, position } = initialSetup(rowIndex, colIndex, cellKey);
             if (pieceColor) {
                 initialBoardStatus[cellKey] = { color: pieceColor, hasBall, position: cellKey};
             } else {
