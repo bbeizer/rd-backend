@@ -60,7 +60,8 @@ const gameSchema = new mongoose.Schema({
     type: Map,
     of: new mongoose.Schema({
       color: String,
-      hasBall: Boolean
+      hasBall: Boolean,
+      position: String
     }, { _id: false })
   }
 }, { timestamps: true });
