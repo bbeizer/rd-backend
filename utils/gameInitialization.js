@@ -5,11 +5,11 @@ const initialSetup = (rowIndex, colIndex) => {
     let hasBall = false;
     let id = null;
 
-    if (rowIndex === 1 && [2, 3, 4, 5].includes(colIndex)) {
+    if (rowIndex === 0 && [2, 3, 4, 5].includes(colIndex)) {
         pieceColor = 'black';
         hasBall = colIndex === 4;
         id = uuidv4(); 
-    } else if (rowIndex === 6 && [2, 3, 4, 5].includes(colIndex)) {
+    } else if (rowIndex === 7 && [2, 3, 4, 5].includes(colIndex)) {
         pieceColor = 'white';
         hasBall = colIndex === 3;
         id = uuidv4();
