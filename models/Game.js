@@ -8,7 +8,6 @@ const gameSchema = new mongoose.Schema({
   },
   winner: {
     type: String,
-    enum: ['black', 'white', null],
     default: null
   },
   activePiece: {
