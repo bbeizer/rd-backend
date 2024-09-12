@@ -45,19 +45,33 @@ function isGameFull(game) {
 
 async function addPlayerToGame(game, playerId, playerName) {
     let playerColor = null;
-    if (!game.whitePlayerId) {
+
+    if (!game.whitePlayerId && !game.blackPlayerId) {
+        // Randomly decide if the first player should be white or black
+        if (Math.random() < 0.5) {
+            game.whitePlayerId = playerId;
+            game.whitePlayerName = playerName;
+            playerColor = 'white';
+        } else {
+            game.blackPlayerId = playerId;
+            game.blackPlayerName = playerName;
+            playerColor = 'black';
+        }
+    } else if (!game.whitePlayerId) {
         game.whitePlayerId = playerId;
-        game.whitePlayerName = playerName;  // Make sure playerName is correctly captured and passed here
+        game.whitePlayerName = playerName;
         playerColor = 'white';
-      } else if (!game.blackPlayerId) {
+    } else if (!game.blackPlayerId) {
         game.blackPlayerId = playerId;
-        game.blackPlayerName = playerName;  // Make sure playerName is correctly captured and passed here
+        game.blackPlayerName = playerName;
         playerColor = 'black';
-      }
-      await game.save();  // Saving the changes
+    }
+
     await game.save();
-    return { game, playerColor };  // Return both the game object and the player color
+
+    return { game, playerColor };
 }
+
 
 exports.createGame = async (req, res) => {
     try {
