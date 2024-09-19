@@ -24,6 +24,23 @@ exports.startOrJoinGame = async (req, res) => {
     }
 };
 
+exports.createSinglePlayerGame = async (req, res) => {
+    try {
+        const { userId } = req.body;
+        // Logic to create a single-player game with AI
+        const newGame = await Game.create({
+            whitePlayer: userId,
+            blackPlayer: 'AI',   // Designate AI as the opponent
+            status: 'playing',
+            currentBoardStatus: getInitialBoard(), // Get initial state of the board
+        });
+        res.status(201).json({ game: newGame });
+    } catch (error) {
+        console.error('Failed to create single-player game:', error);
+        res.status(500).json({ error: 'Failed to create single-player game' });
+    }
+};
+
 
 async function findOrCreateGame() {
     let game = await Game.findOne({ status: 'not started' });
