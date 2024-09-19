@@ -6,6 +6,9 @@ const gameSchema = new mongoose.Schema({
     enum: ['playing', 'not started', 'completed'],
     default: 'not started'
   },
+
+  gameType: { type: String, required: true, enum: ['single', 'multiplayer'], default: 'multiplayer' },
+
   winner: {
     type: String,
     default: null
