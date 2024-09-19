@@ -3,7 +3,7 @@ const queueManager = require('../utils/queueManager');
 const { initializeBoardStatus } = require('../utils/gameInitialization');
 
 
-exports.startOrJoinGame = async (req, res) => {
+exports.startOrJoinGameMultiPlayerGame = async (req, res) => {
     try {
         const existingGame = await findOrCreateGame();
         if (isGameFull(existingGame)) {
@@ -24,7 +24,7 @@ exports.startOrJoinGame = async (req, res) => {
     }
 };
 
-exports.startSinglePlayerGame = async (req, res) => {
+exports.startAndJoinSinglePlayerGame = async (req, res) => {
     try {
         const { playerId, playerName } = req.body;
         const newGame = new Game(initializeBoardStatus());
