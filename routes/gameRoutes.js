@@ -6,7 +6,7 @@ const router = express.Router();
 router.post('/joinMultiplayerGame', gameController.startOrJoinGame);
 
 // Route to add a player to a single player game
-router.post('/startSinglePlayerGame', gameController.createSinglePlayerGame);
+router.post('/startSinglePlayerGame', gameController.startSinglePlayerGame);
 
 // Route to create a new game
 router.post('/', gameController.createGame);
