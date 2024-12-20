@@ -58,6 +58,14 @@ const gameSchema = new mongoose.Schema({
     black: String,
     white: String
   }],
+  currentBoardStatus: {
+    type: Map,
+    of: new mongoose.Schema({
+      color: String,
+      hasBall: Boolean,
+      position: String
+    }, { _id: false })
+  }
 }, { timestamps: true });
 
 gameSchema.index({ whitePlayerId: 1, blackPlayerId: 1 });
