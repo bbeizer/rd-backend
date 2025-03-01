@@ -114,21 +114,42 @@ exports.getGameById = async (req, res) => {
   };
 
 
-exports.updateGame = async (req, res) => {
-  const { id } = req.params; // Get game ID from URL
-  const updates = req.body; // Get updates from request body
-
-  try {
-      const game = await Game.findByIdAndUpdate(id, updates, { new: true });
+  exports.updateGame = async (req, res) => {
+    const { id } = req.params;
+    const updates = req.body;
+  
+    console.log("🛠 Incoming req body:", JSON.stringify(updates, null, 2));
+  
+    try {
+      const game = await Game.findById(id);
+  
       if (!game) {
-          return res.status(404).send({ message: 'Game not found' });
+        return res.status(404).send({ message: "Game not found" });
       }
-      res.json(game);
-  } catch (error) {
-      res.status(500).json({ message: 'Error updating game state', error: error.toString() });
-  }
-};
-
+  
+      // 🔥 Fix: Use `$set` to update the nested `currentBoardStatus`
+      const updatedGame = await Game.findByIdAndUpdate(
+        id,
+        { 
+          $set: { 
+            "currentBoardStatus": updates.gameData.currentBoardStatus, // 🔥 Update only the board
+            "currentPlayerTurn": updates.gameData.currentPlayerTurn, // 🔥 Ensure turn updates
+            "moveHistory": updates.gameData.moveHistory, // 🔥 Preserve move history
+            "winner": updates.gameData.winner, // 🔥 Ensure game state updates
+            "updatedAt": new Date() // 🔥 Ensure timestamp updates
+          } 
+        },
+        { new: true, runValidators: true }
+      );
+  
+      console.log("✅ Updated game state:", JSON.stringify(updatedGame, null, 2));
+      res.json(updatedGame);
+    } catch (error) {
+      console.error("❗ Error updating game:", error);
+      res.status(500).json({ message: "Error updating game state", error: error.toString() });
+    }
+  };
+  
 exports.deleteAll = async(req, res) =>{
   const game = await Game.deleteMany({})
     return res.status(202).json({message: 'success'})
