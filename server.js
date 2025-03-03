@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({path: process.env.NODE_ENV === "production" ? ".env.production" : ".env.development"})
 const express = require('express');
 const mongoose = require('mongoose');
 const helmet = require('helmet');
@@ -16,8 +16,11 @@ app.use(cors());
 app.use(morgan('dev'));
 app.use(express.json());
 
+const isLocal = process.env.NODE_ENV !== "production";
+const MONGO_URI = isLocal ? process.env.MONGO_DEV_URI : process.env.MONGO_PROD_URI;
+
 // Connect to MongoDB
-mongoose.connect(process.env.DB_URI)
+mongoose.connect(MONGO_URI)
   .then(() => console.log('Connected to MongoDB'))
   .catch((err) => console.error(err));
 
