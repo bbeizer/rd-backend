@@ -26,14 +26,20 @@ exports.startOrJoinGameMultiPlayerGame = async (req, res) => {
 
 exports.startAndJoinSinglePlayerGame = async (req, res) => {
     try {
-        const { playerId, playerName } = req.body;
+        const { playerId, playerName, playerColor } = req.body;
+        if (playerColor === 'white'){
+          newGame.whitePlayerName = playerName
+          newGame.whitePlayerId = playerId;
+          newGame.blackPlayerName = 'AI';
+        } else {
         const newGame = new Game(initializeBoardStatus());
-        newGame.whitePlayerName = playerName;
-        newGame.whitePlayerId = playerId;
-        newGame.blackPlayerName = 'AI';
+        newGame.blackPlayerName = playerName
+        newGame.blackPlayerId = playerId;
+        newGame.whitePlayerName = 'AI';
         newGame.gameType = 'single';  // Explicitly set for single player
         newGame.status = 'playing';
         await newGame.save();
+        }
         res.status(201).json({ game: newGame, message: `Game created successfully for player ${playerName}` });
     } catch (error) {
         console.error('Failed to create single-player game:', error);
