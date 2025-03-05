@@ -3,7 +3,7 @@ const gameController = require('../controllers/gameController');
 const router = express.Router();
 
 // Route to add a player to the queue and join a multiplayer game
-router.post('/joinMultiPlayerGame', gameController.startOrJoinGameMultiPlayerGame);
+router.post('/joinMultiPlayerGame', gameController.startOrJoinMultiPlayerGame);
 
 // Route to add a player to a single player game
 router.post('/startSinglePlayerGame', gameController.startAndJoinSinglePlayerGame);

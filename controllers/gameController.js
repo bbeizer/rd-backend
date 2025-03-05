@@ -3,50 +3,50 @@ const queueManager = require('../utils/queueManager');
 const { initializeBoardStatus } = require('../utils/gameInitialization');
 
 
-exports.startOrJoinGameMultiPlayerGame = async (req, res) => {
-    try {
-        const existingGame = await findOrCreateGame();
-        if (isGameFull(existingGame)) {
-            return res.status(400).json({ message: 'Game is already full.' });
-        }
+exports.startOrJoinMultiPlayerGame = async (req, res) => {
+  try {
+      const existingGame = await findOrCreateGame();
+      if (isGameFull(existingGame)) {
+          return res.status(400).json({ message: 'Game is already full.' });
+      }
 
-        const { game: updatedGame, playerColor } = await addPlayerToGame(existingGame, req.body.playerId, req.body.playerName);
-        if (isGameFull(updatedGame)){
-            updatedGame.status = "playing";
-            await updatedGame.save();
-            queueManager.removeFromQueue(updatedGame.whitePlayerId);
-            queueManager.removeFromQueue(updatedGame.blackPlayerId);
-        }
-        res.status(200).json({ game: updatedGame, playerColor, message: 'Player added to existing game.' });
-    } catch (error) {
-        console.error("Error processing startOrJoinGame:", error);
-        res.status(500).json({ error: 'Error processing your request', details: error.message });
-    }
+      const { game: updatedGame, playerColor } = await addPlayerToGame(
+          existingGame, req.body.playerId, req.body.playerName, null, false
+      );
+
+      if (isGameFull(updatedGame)) {
+          queueManager.removeFromQueue(updatedGame.whitePlayerId);
+          queueManager.removeFromQueue(updatedGame.blackPlayerId);
+      }
+
+      res.status(200).json({ game: updatedGame, playerColor, message: 'Player added to existing game.' });
+  } catch (error) {
+      console.error("Error processing startOrJoinGame:", error);
+      res.status(500).json({ error: 'Error processing your request', details: error.message });
+  }
 };
+
 
 exports.startAndJoinSinglePlayerGame = async (req, res) => {
-    try {
-        const { playerId, playerName, playerColor } = req.body;
-        if (playerColor === 'white'){
-          newGame.whitePlayerName = playerName
-          newGame.whitePlayerId = playerId;
-          newGame.blackPlayerName = 'AI';
-        } else {
-        const newGame = new Game(initializeBoardStatus());
-        newGame.blackPlayerName = playerName
-        newGame.blackPlayerId = playerId;
-        newGame.whitePlayerName = 'AI';
-        newGame.gameType = 'single';  // Explicitly set for single player
-        newGame.status = 'playing';
-        await newGame.save();
-        }
-        res.status(201).json({ game: newGame, message: `Game created successfully for player ${playerName}` });
-    } catch (error) {
-        console.error('Failed to create single-player game:', error);
-        res.status(500).json({ error: 'Failed to create single-player game' });
-    }
-};
+  try {
+      const { playerId, playerName, playerColor } = req.body;
+      const newGame = new Game(initializeBoardStatus());
+      newGame.gameType = 'single'; // Explicitly set for single player
+      console.log("logging new game")
+      console.log(newGame)
+      console.log("logging color:")
+      console.log(playerColor)
 
+      const { game: createdGame } = await addPlayerToGame(
+          newGame, playerId, playerName, playerColor, true
+      );
+
+      res.status(201).json({ game: createdGame, message: `Game created successfully for player ${playerName}` });
+  } catch (error) {
+      console.error('Failed to create single-player game:', error);
+      res.status(500).json({ error: 'Failed to create single-player game' });
+  }
+};
 
 
 async function findOrCreateGame() {
@@ -67,35 +67,52 @@ function isGameFull(game) {
     return game.whitePlayerId && game.blackPlayerId;
 }
 
-async function addPlayerToGame(game, playerId, playerName) {
-    let playerColor = null;
+async function addPlayerToGame(game, playerId, playerName, preferredColor = null, isSinglePlayer = false) {
+  let playerColor = null;
 
-    if (!game.whitePlayerId && !game.blackPlayerId) {
-        // Randomly decide if the first player should be white or black
-        if (Math.random() < 0.5) {
-            game.whitePlayerId = playerId;
-            game.whitePlayerName = playerName;
-            playerColor = 'white';
-        } else {
-            game.blackPlayerId = playerId;
-            game.blackPlayerName = playerName;
-            playerColor = 'black';
-        }
-    } else if (!game.whitePlayerId) {
-        game.whitePlayerId = playerId;
-        game.whitePlayerName = playerName;
-        playerColor = 'white';
-    } else if (!game.blackPlayerId) {
-        game.blackPlayerId = playerId;
-        game.blackPlayerName = playerName;
-        playerColor = 'black';
-    }
+  if (isSinglePlayer) {
+      // Assign player their preferred color in single-player mode
+      if (preferredColor === 'white') {
+          game.whitePlayerId = playerId;
+          game.whitePlayerName = playerName;
+          game.blackPlayerName = 'AI';
+      } else {
+          game.blackPlayerId = playerId;
+          game.blackPlayerName = playerName;
+          game.whitePlayerName = 'AI';
+      }
+      game.status = 'playing'; // Auto-start the game
+      playerColor = preferredColor;
+  } else {
+      // Multiplayer: Random assignment if both slots are empty
+      if (!game.whitePlayerId && !game.blackPlayerId) {
+          if (Math.random() < 0.5) {
+              game.whitePlayerId = playerId;
+              game.whitePlayerName = playerName;
+              playerColor = 'white';
+          } else {
+              game.blackPlayerId = playerId;
+              game.blackPlayerName = playerName;
+              playerColor = 'black';
+          }
+      } else if (!game.whitePlayerId) {
+          game.whitePlayerId = playerId;
+          game.whitePlayerName = playerName;
+          playerColor = 'white';
+      } else if (!game.blackPlayerId) {
+          game.blackPlayerId = playerId;
+          game.blackPlayerName = playerName;
+          playerColor = 'black';
+      }
+      
+      if (isGameFull(game)) {
+          game.status = "playing";
+      }
+  }
 
-    await game.save();
-
-    return { game, playerColor };
+  await game.save();
+  return { game, playerColor };
 }
-
 
 exports.createGame = async (req, res) => {
     try {
@@ -123,9 +140,8 @@ exports.getGameById = async (req, res) => {
   exports.updateGame = async (req, res) => {
     const { id } = req.params;
     const updates = req.body;
-  
+    console.log(updates)
     console.log("🛠 Incoming req body:", JSON.stringify(updates, null, 2));
-  
     try {
       const game = await Game.findById(id);
   
@@ -138,10 +154,10 @@ exports.getGameById = async (req, res) => {
         id,
         { 
           $set: { 
-            "currentBoardStatus": updates.gameData.currentBoardStatus, // 🔥 Update only the board
-            "currentPlayerTurn": updates.gameData.currentPlayerTurn, // 🔥 Ensure turn updates
-            "moveHistory": updates.gameData.moveHistory, // 🔥 Preserve move history
-            "winner": updates.gameData.winner, // 🔥 Ensure game state updates
+            "currentBoardStatus": updates.currentBoardStatus, // 🔥 Update only the board
+            "currentPlayerTurn": updates.currentPlayerTurn, // 🔥 Ensure turn updates
+            "moveHistory": updates.moveHistory, // 🔥 Preserve move history
+            "winner": updates.winner, // 🔥 Ensure game state updates
             "updatedAt": new Date() // 🔥 Ensure timestamp updates
           } 
         },
