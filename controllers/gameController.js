@@ -140,37 +140,58 @@ exports.getGameById = async (req, res) => {
   exports.updateGame = async (req, res) => {
     const { id } = req.params;
     const updates = req.body;
-    console.log(updates)
-    console.log("🛠 Incoming req body:", JSON.stringify(updates, null, 2));
-    try {
-      const game = await Game.findById(id);
   
+    console.log("🛠 Incoming request body:", JSON.stringify(updates, null, 2));
+  
+    try {
+      // ✅ Fetch game first
+      const game = await Game.findById(id);
       if (!game) {
-        return res.status(404).send({ message: "Game not found" });
+        return res.status(404).json({ message: "Game not found" });
       }
   
-      // 🔥 Fix: Use `$set` to update the nested `currentBoardStatus`
+      // ✅ Only update fields that exist in `updates` (prevent overwriting with undefined)
+      const updateFields = {};
+      const allowedFields = [
+        "currentBoardStatus",
+        "currentPlayerTurn",
+        "movedPiece",
+        "isUserTurn",
+        "possibleMoves",
+        "possiblePasses",
+        "moveHistory",
+        "hasMoved",
+        "winner",
+        "movedPieceOriginalPosition"
+      ];
+  
+      allowedFields.forEach((field) => {
+        if (updates[field] !== undefined) {
+          updateFields[field] = updates[field];
+        }
+      });
+  
+      // ✅ Ensure `possiblePasses` is correctly updated
+      if (updates.possiblePasses !== undefined) {
+        updateFields.possiblePasses = updates.possiblePasses;
+      }
+  
+      updateFields.updatedAt = new Date(); // ✅ Always update timestamp
+  
+      // ✅ Update only fields that exist in `updates`
       const updatedGame = await Game.findByIdAndUpdate(
         id,
-        { 
-          $set: { 
-            "currentBoardStatus": updates.currentBoardStatus, // 🔥 Update only the board
-            "currentPlayerTurn": updates.currentPlayerTurn, // 🔥 Ensure turn updates
-            "moveHistory": updates.moveHistory, // 🔥 Preserve move history
-            "winner": updates.winner, // 🔥 Ensure game state updates
-            "updatedAt": new Date() // 🔥 Ensure timestamp updates
-          } 
-        },
+        { $set: updateFields },
         { new: true, runValidators: true }
       );
   
       console.log("✅ Updated game state:", JSON.stringify(updatedGame, null, 2));
       res.json(updatedGame);
     } catch (error) {
-      console.error("❗ Error updating game:", error);
+      console.error("❌ Error updating game:", error);
       res.status(500).json({ message: "Error updating game state", error: error.toString() });
     }
-  };
+  };  
   
 exports.deleteAll = async(req, res) =>{
   const game = await Game.deleteMany({})
