@@ -32,10 +32,6 @@ exports.startAndJoinSinglePlayerGame = async (req, res) => {
       const { playerId, playerName, playerColor } = req.body;
       const newGame = new Game(initializeBoardStatus());
       newGame.gameType = 'single'; // Explicitly set for single player
-      console.log("logging new game")
-      console.log(newGame)
-      console.log("logging color:")
-      console.log(playerColor)
 
       const { game: createdGame } = await addPlayerToGame(
           newGame, playerId, playerName, playerColor, true
@@ -140,58 +136,45 @@ exports.getGameById = async (req, res) => {
   exports.updateGame = async (req, res) => {
     const { id } = req.params;
     const updates = req.body;
-  
-    console.log("🛠 Incoming request body:", JSON.stringify(updates, null, 2));
-  
+
+    console.log("🛠 UPDATING GAME with:", updates);
+
     try {
-      // ✅ Fetch game first
-      const game = await Game.findById(id);
-      if (!game) {
-        return res.status(404).json({ message: "Game not found" });
-      }
-  
-      // ✅ Only update fields that exist in `updates` (prevent overwriting with undefined)
-      const updateFields = {};
-      const allowedFields = [
-        "currentBoardStatus",
-        "currentPlayerTurn",
-        "movedPiece",
-        "isUserTurn",
-        "possibleMoves",
-        "possiblePasses",
-        "moveHistory",
-        "hasMoved",
-        "winner",
-        "movedPieceOriginalPosition"
-      ];
-  
-      allowedFields.forEach((field) => {
-        if (updates[field] !== undefined) {
-          updateFields[field] = updates[field];
+        let game = await Game.findById(id);
+        if (!game) {
+            return res.status(404).json({ message: "Game not found" });
         }
-      });
-  
-      // ✅ Ensure `possiblePasses` is correctly updated
-      if (updates.possiblePasses !== undefined) {
-        updateFields.possiblePasses = updates.possiblePasses;
-      }
-  
-      updateFields.updatedAt = new Date(); // ✅ Always update timestamp
-  
-      // ✅ Update only fields that exist in `updates`
-      const updatedGame = await Game.findByIdAndUpdate(
-        id,
-        { $set: updateFields },
-        { new: true, runValidators: true }
-      );
-  
-      console.log("✅ Updated game state:", JSON.stringify(updatedGame, null, 2));
-      res.json(updatedGame);
+
+        // ✅ If `updates.gameData` exists, merge its fields safely instead of overwriting
+        if (updates.gameData) {
+            Object.keys(updates.gameData).forEach(key => {
+                if (key === "currentBoardStatus") {
+                    // ✅ Merge only the board updates, preserving existing state
+                    game.gameData.currentBoardStatus = {
+                        ...game.gameData.currentBoardStatus, // Keep existing board state
+                        ...updates.gameData.currentBoardStatus // Merge new updates
+                    };
+                } else {
+                    game.gameData[key] = updates.gameData[key]; // Merge other gameData fields
+                }
+            });
+        }
+
+        // ✅ Merge other top-level updates (but not `gameData`, since it’s handled above)
+        Object.keys(updates).forEach(key => {
+            if (key !== "gameData") {
+                game[key] = updates[key];
+            }
+        });
+
+        await game.save();
+        console.log("✅ Successfully saved game:", game);
+        return res.json(game);
     } catch (error) {
-      console.error("❌ Error updating game:", error);
-      res.status(500).json({ message: "Error updating game state", error: error.toString() });
+        console.error("❌ Error updating game:", error);
+        return res.status(500).json({ message: "Error updating game state", error: error.toString() });
     }
-  };  
+};
   
 exports.deleteAll = async(req, res) =>{
   const game = await Game.deleteMany({})
