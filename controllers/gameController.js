@@ -135,46 +135,57 @@ exports.getGameById = async (req, res) => {
 
   exports.updateGame = async (req, res) => {
     const { id } = req.params;
-    const updates = req.body;
+    let updates = req.body;
 
     console.log("🛠 UPDATING GAME with:", updates);
 
     try {
-        let game = await Game.findById(id);
-        if (!game) {
+        // ✅ Fetch existing game to merge `currentBoardStatus` safely
+        const existingGame = await Game.findById(id);
+        if (!existingGame) {
             return res.status(404).json({ message: "Game not found" });
         }
 
-        // ✅ If `updates.gameData` exists, merge its fields safely instead of overwriting
-        if (updates.gameData) {
-            Object.keys(updates.gameData).forEach(key => {
-                if (key === "currentBoardStatus") {
-                    // ✅ Merge only the board updates, preserving existing state
-                    game.gameData.currentBoardStatus = {
-                        ...game.gameData.currentBoardStatus, // Keep existing board state
-                        ...updates.gameData.currentBoardStatus // Merge new updates
-                    };
-                } else {
-                    game.gameData[key] = updates.gameData[key]; // Merge other gameData fields
-                }
-            });
+        // ✅ Deep clone the existing `currentBoardStatus` to remove Mongoose internals
+        let sanitizedBoardStatus = JSON.parse(JSON.stringify(existingGame.currentBoardStatus));
+
+        if (updates.currentBoardStatus) {
+            sanitizedBoardStatus = {
+                ...sanitizedBoardStatus,  // Preserve existing board state
+                ...updates.currentBoardStatus // Apply new updates
+            };
         }
 
-        // ✅ Merge other top-level updates (but not `gameData`, since it’s handled above)
-        Object.keys(updates).forEach(key => {
-            if (key !== "gameData") {
-                game[key] = updates[key];
-            }
-        });
+        // ✅ Prepare sanitized updates object (avoids circular refs)
+        const sanitizedUpdates = { ...updates, currentBoardStatus: sanitizedBoardStatus };
 
-        await game.save();
-        console.log("✅ Successfully saved game:", game);
-        return res.json(game);
+        // Remove any potential Mongoose metadata
+        delete sanitizedUpdates._id;
+        delete sanitizedUpdates.__v;
+        delete sanitizedUpdates.createdAt;
+        delete sanitizedUpdates.updatedAt;
+
+        // ✅ Use `findByIdAndUpdate` to update without circular refs
+        const updatedGame = await Game.findByIdAndUpdate(
+            id,
+            { $set: sanitizedUpdates }, // ✅ Use `$set` to update only the necessary fields
+            { new: true, runValidators: true } // ✅ Returns updated document, applies schema validation
+        );
+
+        if (!updatedGame) {
+            return res.status(404).json({ message: "Game not found" });
+        }
+
+        console.log("✅ Successfully updated game:", updatedGame);
+        return res.json(updatedGame);
     } catch (error) {
         console.error("❌ Error updating game:", error);
         return res.status(500).json({ message: "Error updating game state", error: error.toString() });
     }
 };
+
+
+
   
 exports.deleteAll = async(req, res) =>{
   const game = await Game.deleteMany({})
