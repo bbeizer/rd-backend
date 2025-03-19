@@ -63,7 +63,8 @@ const gameSchema = new mongoose.Schema({
   whitePlayerId: { type: String, ref: 'User' },
   blackPlayerId: { type: String, ref: 'User' },
   whitePlayerName: { type: String },  
-  blackPlayerName: { type: String },  
+  blackPlayerName: { type: String },
+  aiColor: { type: String, enum: ["white", "black", null], default: null },  
 
   turnNumber: { type: Number, default: 0 },
 
