@@ -5,6 +5,7 @@ const helmet = require('helmet');
 const cors = require('cors');
 const morgan = require('morgan');
 const gameRoutes = require('./routes/gameRoutes');
+const feedbackRoutes = require('./routes/feedback.js');
 
 const waitingPlayers = [];
 
@@ -26,6 +27,7 @@ mongoose.connect(MONGO_URI)
 
 // Routes
 app.use('/api/games', gameRoutes);
+app.use('/api/feedback', feedbackRoutes);
 
 // Start server
 const PORT = process.env.PORT || 5000;
