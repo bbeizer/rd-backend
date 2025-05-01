@@ -1,4 +1,4 @@
-require('dotenv').config({path: process.env.NODE_ENV === "production" ? ".env.production" : ".env.development"})
+require('dotenv').config({ path: process.env.NODE_ENV === "production" ? ".env.production" : ".env.development" })
 const express = require('express');
 const mongoose = require('mongoose');
 const helmet = require('helmet');
@@ -6,8 +6,6 @@ const cors = require('cors');
 const morgan = require('morgan');
 const gameRoutes = require('./routes/gameRoutes');
 const feedbackRoutes = require('./routes/feedback.js');
-
-const waitingPlayers = [];
 
 const app = express();
 
