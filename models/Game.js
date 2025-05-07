@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const messageSchema = require('./Message');
 
 const gameSchema = new mongoose.Schema({
   status: {
@@ -8,7 +9,7 @@ const gameSchema = new mongoose.Schema({
   },
 
   gameType: { type: String, required: true, enum: ['single', 'multiplayer'], default: 'multiplayer' },
-  conversation: { type: Array, default: [] },
+  conversation: { type: [messageSchema], default: [] },
   currentBoardStatus: {
     type: Map,
     of: new mongoose.Schema({
