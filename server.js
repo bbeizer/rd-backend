@@ -13,6 +13,7 @@ const app = express();
 app.use(helmet());
 app.use(cors({
   origin: 'https://www.razzlndazzle.com',
+  credentials: true,
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
