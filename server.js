@@ -1,3 +1,4 @@
+console.log('🚨 THIS IS THE REAL CODE, BABY');
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
