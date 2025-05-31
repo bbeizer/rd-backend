@@ -1,5 +1,6 @@
 console.log('🚨 THIS IS THE REAL CODE, BABY');
 require('dotenv').config();
+console.log('📦 process.env.PORT:', process.env.PORT);
 const express = require('express');
 const mongoose = require('mongoose');
 const helmet = require('helmet');
