@@ -1,4 +1,3 @@
-console.log('🚨 THIS IS THE REAL CODE, BABY');
 require('dotenv').config();
 console.log('📦 process.env.PORT:', process.env.PORT);
 const express = require('express');
@@ -50,14 +49,8 @@ try {
 } catch (err) {
   console.warn('⚠️ Skipping feedback routes due to error:', err.message);
 }
-
-// Health check route
-app.get('/ping', (req, res) => {
-  res.send('pong');
-});
-
 // Start server
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server started on port ${PORT}`);
 });
