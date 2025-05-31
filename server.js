@@ -11,7 +11,7 @@ const app = express();
 
 // Middlewares
 app.use(helmet());
-app.use(cors({
+app.options('*', cors({
   origin: 'https://www.razzlndazzle.com',
   credentials: true,
   methods: ['GET', 'POST', 'OPTIONS'],
