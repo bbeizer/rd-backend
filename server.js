@@ -10,13 +10,15 @@ const feedbackRoutes = require('./routes/feedback.js');
 const app = express();
 
 // Middlewares
-app.use(helmet());
-app.options('*', cors({
+const corsOptions = {
   origin: 'https://www.razzlndazzle.com',
   credentials: true,
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
-}));
+};
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
+app.use(helmet());
 app.use(morgan('dev'));
 app.use(express.json());
 
