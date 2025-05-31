@@ -22,8 +22,7 @@ app.use(helmet());
 app.use(morgan('dev'));
 app.use(express.json());
 
-const isLocal = process.env.NODE_ENV !== "production";
-const MONGO_URI = isLocal ? process.env.MONGO_DEV_URI : process.env.MONGO_PROD_URI;
+const MONGO_URI = process.env.MONGO_URI
 
 // Connect to MongoDB
 mongoose.connect(MONGO_URI)
