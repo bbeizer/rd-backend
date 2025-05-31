@@ -32,7 +32,7 @@ mongoose.connect(MONGO_URI)
 // Routes
 app.use('/api/games', gameRoutes);
 app.use('/api/feedback', feedbackRoutes);
-app.get('/healthz', (req, res) => {
+app.get('/healthCheck', (req, res) => {
   res.send('✅ Server is live');
 });
 
