@@ -33,6 +33,9 @@ mongoose.connect(MONGO_URI)
 // Routes
 app.use('/api/games', gameRoutes);
 app.use('/api/feedback', feedbackRoutes);
+app.get('/healthz', (req, res) => {
+  res.send('✅ Server is live');
+});
 
 // Start server
 const PORT = process.env.PORT || 5000;
