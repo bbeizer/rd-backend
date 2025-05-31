@@ -4,9 +4,6 @@ const mongoose = require('mongoose');
 const helmet = require('helmet');
 const cors = require('cors');
 const morgan = require('morgan');
-const gameRoutes = require('./routes/gameRoutes');
-const feedbackRoutes = require('./routes/feedback.js');
-
 const app = express();
 
 // Middlewares
@@ -22,20 +19,43 @@ app.use(helmet());
 app.use(morgan('dev'));
 app.use(express.json());
 
-const MONGO_URI = process.env.MONGO_URI
+// MongoDB connection
+const MONGO_URI = process.env.MONGO_URI;
 
-// Connect to MongoDB
+if (!MONGO_URI) {
+  console.error('❌ MONGO_URI is not defined in environment variables.');
+  process.exit(1); // kill app if no DB URI
+}
+
 mongoose.connect(MONGO_URI)
-  .then(() => console.log('Connected to MongoDB'))
-  .catch((err) => console.error(err));
+  .then(() => console.log('✅ Connected to MongoDB'))
+  .catch((err) => {
+    console.error('❌ MongoDB connection failed:', err);
+    process.exit(1);
+  });
 
 // Routes
-app.use('/api/games', gameRoutes);
-app.use('/api/feedback', feedbackRoutes);
-app.get('/healthCheck', (req, res) => {
-  res.send('✅ Server is live');
+try {
+  const gameRoutes = require('./routes/gameRoutes');
+  app.use('/api/games', gameRoutes);
+} catch (err) {
+  console.warn('⚠️ Skipping game routes due to error:', err.message);
+}
+
+try {
+  const feedbackRoutes = require('./routes/feedback.js');
+  app.use('/api/feedback', feedbackRoutes);
+} catch (err) {
+  console.warn('⚠️ Skipping feedback routes due to error:', err.message);
+}
+
+// Health check route
+app.get('/ping', (req, res) => {
+  res.send('pong');
 });
 
 // Start server
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server started on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`🚀 Server started on port ${PORT}`);
+});
