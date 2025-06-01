@@ -1,10 +1,12 @@
 require('dotenv').config();
 const express = require('express');
+const cors = require('cors');
 const { Resend } = require('resend');
 
 const router = express.Router();
-
 const resend = new Resend(process.env.RESEND_API_KEY);
+
+router.options('/', cors());
 
 router.post('/', async (req, res) => {
   const { name, message } = req.body;
