@@ -8,7 +8,7 @@ const gameSchema = new mongoose.Schema({
     default: 'not started'
   },
 
-  gameType: { type: String, required: true, enum: ['single', 'multiplayer'], default: 'multiplayer' },
+  gameType: { type: String, required: true, enum: ['singleplayer', 'multiplayer'], default: 'multiplayer' },
   conversation: { type: [messageSchema], default: [] },
   currentBoardStatus: {
     type: Map,
