@@ -129,6 +129,9 @@ try {
   console.warn('⚠️ Failed to load feedback routes:', err.message);
 }
 
+// Centralized error handler (should be last)
+app.use(require('./middleware/errorHandler'));
+
 // Start server
 const PORT = process.env.PORT || 5000;
 httpServer.listen(PORT, () => {
