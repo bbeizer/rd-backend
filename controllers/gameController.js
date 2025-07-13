@@ -1,6 +1,7 @@
 const Game = require('../models/Game');
 const queueManager = require('../utils/queueManager');
 const { initializeBoardStatus } = require('../utils/gameInitialization');
+const { emitGameUpdate, emitGameStarted } = require('../utils/socketManager');
 
 
 exports.startOrJoinMultiPlayerGame = async (req, res) => {
@@ -17,6 +18,10 @@ exports.startOrJoinMultiPlayerGame = async (req, res) => {
         if (isGameFull(updatedGame)) {
             queueManager.removeFromQueue(updatedGame.whitePlayerId);
             queueManager.removeFromQueue(updatedGame.blackPlayerId);
+
+            // 🔌 Emit WebSocket event when game is full and ready to start
+            const io = req.app.get('io');
+            emitGameStarted(io, updatedGame._id.toString(), updatedGame);
         }
 
         res.status(200).json({ game: updatedGame, playerColor, message: 'Player added to existing game.' });
@@ -36,6 +41,10 @@ exports.startAndJoinSinglePlayerGame = async (req, res) => {
         const { game: createdGame } = await addPlayerToGame(
             newGame, playerId, playerName, playerColor, true
         );
+
+        // 🔌 Emit WebSocket event for single player game creation
+        const io = req.app.get('io');
+        emitGameStarted(io, createdGame._id.toString(), createdGame);
 
         res.status(201).json({ game: createdGame, message: `Game created successfully for player ${playerName}` });
     } catch (error) {
@@ -170,6 +179,10 @@ exports.updateGame = async (req, res) => {
         Object.assign(existingGame, sanitizedUpdates);
 
         const updatedGame = await existingGame.save();
+
+        // 🔌 Emit WebSocket event to all clients in the game room
+        const io = req.app.get('io');
+        emitGameUpdate(io, id, updatedGame);
 
         console.log("✅ Successfully updated game:", updatedGame);
         return res.json(updatedGame);
