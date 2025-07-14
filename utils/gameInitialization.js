@@ -1,4 +1,4 @@
-const uuidv4 = require('uuid').v4; 
+const uuidv4 = require('uuid').v4;
 
 const initialSetup = (rowIndex, colIndex) => {
     let pieceColor = null;
@@ -8,7 +8,7 @@ const initialSetup = (rowIndex, colIndex) => {
     if (rowIndex === 0 && [2, 3, 4, 5].includes(colIndex)) {
         pieceColor = 'black';
         hasBall = colIndex === 4;
-        id = uuidv4(); 
+        id = uuidv4();
     } else if (rowIndex === 7 && [2, 3, 4, 5].includes(colIndex)) {
         pieceColor = 'white';
         hasBall = colIndex === 3;
@@ -33,12 +33,7 @@ const initializeBoardStatus = () => {
         }
     }
 
-    return {
-        status: 'not started',
-        turnPlayer: 'white',
-        moveHistory: [],
-        currentBoardStatus: initialBoardStatus,
-    };
+    return initialBoardStatus;
 };
 
 module.exports = { initializeBoardStatus };
