@@ -37,7 +37,8 @@ exports.startAndJoinSinglePlayerGame = async (req, res) => {
         const { playerId, playerName, playerColor } = req.body;
         const newGame = new Game(initializeBoardStatus());
         newGame.gameType = 'singleplayer'; // Explicitly set for single player
-        newGame.aiColor = playerColor === 'white' ? 'black' : 'white'
+        newGame.aiColor = playerColor === 'white' ? 'black' : 'white';
+        newGame.playerColor = playerColor; // <-- Add this line for consistency
         const { game: createdGame } = await addPlayerToGame(
             newGame, playerId, playerName, playerColor, true
         );
