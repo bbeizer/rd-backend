@@ -6,8 +6,8 @@ const {
     handleCellClick,
     handlePassTurn,
     handleSendMessage,
-    makeAIMove,
 } = require('../utils/gameLogic');
+const { makeAIMove } = require('../utils/aiLogic');
 
 
 exports.startOrJoinMultiPlayerGame = async (req, res) => {

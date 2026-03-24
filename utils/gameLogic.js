@@ -590,111 +590,6 @@ function handleSendMessage(game, playerId, payload) {
   };
 }
 
-// ============================================
-// AI MOVE GENERATION (Simple Random AI)
-// ============================================
-
-/**
- * Make a random AI move
- * @param {Object} game - Current game state
- * @returns {Object} Updated game state after AI move
- */
-function makeAIMove(game) {
-  const aiColor = game.aiColor;
-  if (!aiColor) return game;
-
-  const board = cloneBoard(game.currentBoardStatus);
-
-  // Find all AI pieces
-  const aiPieces = [];
-  for (const cellKey of Object.keys(board)) {
-    const piece = board[cellKey];
-    if (piece && piece.color === aiColor) {
-      aiPieces.push({ cellKey, piece });
-    }
-  }
-
-  if (aiPieces.length === 0) return game;
-
-  // Shuffle pieces for randomness
-  shuffleArray(aiPieces);
-
-  let newBoard = board;
-  let moved = false;
-
-  // Try to move a piece without the ball
-  for (const { cellKey, piece } of aiPieces) {
-    if (!piece.hasBall) {
-      const moves = getPieceMoves(cellKey, newBoard, false, null);
-      if (moves.length > 0) {
-        // Pick a random valid move
-        const targetKey = moves[Math.floor(Math.random() * moves.length)];
-        newBoard = movePiece(cellKey, targetKey, newBoard);
-        moved = true;
-        break;
-      }
-    }
-  }
-
-  // Try to pass the ball (find the ball holder)
-  const ballHolder = aiPieces.find(p => p.piece.hasBall);
-  if (ballHolder) {
-    // Refresh ball holder position after potential move
-    let currentBallPos = ballHolder.cellKey;
-    for (const key of Object.keys(newBoard)) {
-      const p = newBoard[key];
-      if (p && p.color === aiColor && p.hasBall) {
-        currentBallPos = key;
-        break;
-      }
-    }
-
-    const passes = getValidPasses(currentBallPos, aiColor, newBoard);
-    if (passes.length > 0) {
-      // Prefer passing towards goal, otherwise random
-      const goalRow = aiColor === 'black' ? '1' : '8';
-      const goalPasses = passes.filter(p => p.endsWith(goalRow));
-      const targetPass = goalPasses.length > 0
-        ? goalPasses[Math.floor(Math.random() * goalPasses.length)]
-        : passes[Math.floor(Math.random() * passes.length)];
-
-      newBoard = passBall(currentBallPos, targetPass, newBoard);
-    }
-  }
-
-  // Check win condition
-  const winner = didWin(newBoard);
-
-  const newGame = {
-    ...game,
-    currentBoardStatus: newBoard,
-    activePiece: null,
-    movedPiece: { position: null },
-    originalSquare: null,
-    hasMoved: false,
-    possibleMoves: [],
-    possiblePasses: [],
-  };
-
-  if (winner) {
-    newGame.status = 'completed';
-    newGame.winner = winner === 'white' ? game.whitePlayerName : game.blackPlayerName;
-  }
-
-  return newGame;
-}
-
-/**
- * Shuffle array in place (Fisher-Yates)
- */
-function shuffleArray(array) {
-  for (let i = array.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [array[i], array[j]] = [array[j], array[i]];
-  }
-  return array;
-}
-
 module.exports = {
   getKeyCoordinates,
   toCellKey,
@@ -711,5 +606,4 @@ module.exports = {
   handleCellClick,
   handlePassTurn,
   handleSendMessage,
-  makeAIMove,
 };
