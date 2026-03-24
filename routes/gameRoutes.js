@@ -10,6 +10,9 @@ router.post('/joinMultiplayerGame', gameController.startOrJoinMultiPlayerGame);
 router.post('/startSinglePlayerGame', gameController.startAndJoinSinglePlayerGame);
 router.post('/', gameController.createGame);
 
+// Action endpoint for game state changes (moves, passes, turns)
+router.post('/:id/action', gameController.handleGameAction);
+
 router.route('/:id')
   .get(gameController.getGameById)
   .patch([

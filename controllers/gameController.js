@@ -1,7 +1,13 @@
 const Game = require('../models/Game');
 const queueManager = require('../utils/queueManager');
 const { initializeBoardStatus } = require('../utils/gameInitialization');
-const { emitGameUpdate, emitGameStarted } = require('../utils/socketManager');
+const { emitGameUpdate, emitGameStarted, emitGameEnd } = require('../utils/socketManager');
+const {
+    handleCellClick,
+    handlePassTurn,
+    handleSendMessage,
+    makeAIMove,
+} = require('../utils/gameLogic');
 
 
 exports.startOrJoinMultiPlayerGame = async (req, res) => {
@@ -196,4 +202,179 @@ exports.updateGame = async (req, res) => {
 exports.deleteAll = async (req, res) => {
     const game = await Game.deleteMany({})
     return res.status(202).json({ message: 'success' })
+};
+
+/**
+ * Handle game actions (CELL_CLICK, PASS_TURN, SEND_MESSAGE)
+ * POST /api/games/:id/action
+ */
+exports.handleGameAction = async (req, res) => {
+    const { id } = req.params;
+    const { playerId, action } = req.body;
+
+    console.log(`🎮 Action received for game ${id}:`, action?.type);
+
+    try {
+        // Validate request structure
+        if (!playerId || !action || !action.type) {
+            return res.status(400).json({
+                success: false,
+                error: {
+                    code: 'INVALID_ACTION',
+                    message: 'Missing playerId or action',
+                },
+            });
+        }
+
+        // Fetch the game
+        const game = await Game.findById(id);
+        if (!game) {
+            return res.status(404).json({
+                success: false,
+                error: {
+                    code: 'INVALID_ACTION',
+                    message: 'Game not found',
+                },
+            });
+        }
+
+        // Convert Mongoose document to plain object for processing
+        const gameState = game.toObject();
+        // Convert Map to plain object if needed
+        if (gameState.currentBoardStatus instanceof Map) {
+            const boardObj = {};
+            gameState.currentBoardStatus.forEach((value, key) => {
+                boardObj[key] = value;
+            });
+            gameState.currentBoardStatus = boardObj;
+        }
+
+        let result;
+
+        // Route to appropriate handler
+        switch (action.type) {
+            case 'CELL_CLICK':
+                if (!action.payload || !action.payload.cellKey) {
+                    return res.status(400).json({
+                        success: false,
+                        error: {
+                            code: 'INVALID_ACTION',
+                            message: 'CELL_CLICK requires payload.cellKey',
+                        },
+                    });
+                }
+                result = handleCellClick(gameState, action.payload.cellKey, playerId);
+                break;
+
+            case 'PASS_TURN':
+                result = handlePassTurn(gameState, playerId);
+
+                // Handle AI turn in singleplayer
+                if (result.success && game.gameType === 'singleplayer' && game.aiColor) {
+                    const nextTurn = result.game.currentPlayerTurn;
+                    if (nextTurn === game.aiColor) {
+                        // Make AI move
+                        result.game = makeAIMove(result.game);
+                        // Switch turn back to player
+                        const playerColor = game.aiColor === 'white' ? 'black' : 'white';
+                        result.game.currentPlayerTurn = playerColor;
+                        result.game.turnNumber = (result.game.turnNumber || 0) + 1;
+                    }
+                }
+                break;
+
+            case 'SEND_MESSAGE':
+                result = handleSendMessage(gameState, playerId, action.payload);
+                break;
+
+            default:
+                return res.status(400).json({
+                    success: false,
+                    error: {
+                        code: 'INVALID_ACTION',
+                        message: `Unknown action type: ${action.type}`,
+                    },
+                });
+        }
+
+        // Handle errors from game logic
+        if (!result.success) {
+            return res.status(400).json({
+                success: false,
+                error: result.error,
+            });
+        }
+
+        // Apply updates to the game document
+        const updatedGameState = result.game;
+
+        // Update board status
+        if (updatedGameState.currentBoardStatus) {
+            game.currentBoardStatus = updatedGameState.currentBoardStatus;
+        }
+
+        // Update other fields
+        if (updatedGameState.activePiece !== undefined) {
+            game.activePiece = updatedGameState.activePiece || { position: null, color: undefined, hasBall: false };
+        }
+        if (updatedGameState.possibleMoves !== undefined) {
+            game.possibleMoves = updatedGameState.possibleMoves;
+        }
+        if (updatedGameState.possiblePasses !== undefined) {
+            game.possiblePasses = updatedGameState.possiblePasses;
+        }
+        if (updatedGameState.movedPiece !== undefined) {
+            game.movedPiece = updatedGameState.movedPiece;
+        }
+        if (updatedGameState.originalSquare !== undefined) {
+            game.originalSquare = updatedGameState.originalSquare;
+        }
+        if (updatedGameState.hasMoved !== undefined) {
+            game.hasMoved = updatedGameState.hasMoved;
+        }
+        if (updatedGameState.currentPlayerTurn !== undefined) {
+            game.currentPlayerTurn = updatedGameState.currentPlayerTurn;
+        }
+        if (updatedGameState.turnNumber !== undefined) {
+            game.turnNumber = updatedGameState.turnNumber;
+        }
+        if (updatedGameState.status !== undefined) {
+            game.status = updatedGameState.status;
+        }
+        if (updatedGameState.winner !== undefined) {
+            game.winner = updatedGameState.winner;
+        }
+        if (updatedGameState.conversation !== undefined) {
+            game.conversation = updatedGameState.conversation;
+        }
+
+        // Save the updated game
+        const savedGame = await game.save();
+
+        // Emit WebSocket events
+        const io = req.app.get('io');
+        emitGameUpdate(io, id, savedGame);
+
+        // Emit game end if completed
+        if (savedGame.status === 'completed') {
+            emitGameEnd(io, id, savedGame);
+        }
+
+        console.log(`✅ Action ${action.type} processed successfully`);
+
+        return res.json({
+            success: true,
+            gameState: savedGame,
+        });
+
+    } catch (error) {
+        console.error('❌ Error processing game action:', error);
+        return res.status(500).json({
+            success: false,
+            error: {
+                code: 'INVALID_ACTION',
+                message: 'Error processing game action',
+            },
+        });
+    }
 };
