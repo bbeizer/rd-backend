@@ -188,16 +188,32 @@ function setBoardCell(board, cellKey, value) {
  * @returns {Object} Plain object board
  */
 function cloneBoard(board) {
-  if (board instanceof Map) {
-    const obj = {};
-    board.forEach((value, key) => {
-      obj[key] = value ? { ...value } : null;
-    });
-    return obj;
-  }
   const cloned = {};
+
+  // Helper to extract plain object from Mongoose subdocument or plain object
+  const extractPiece = (value) => {
+    if (!value) return null;
+    // If it's a Mongoose subdocument, get the _doc property
+    if (value._doc) {
+      return { ...value._doc };
+    }
+    // If it has toObject method, use it
+    if (typeof value.toObject === 'function') {
+      return value.toObject();
+    }
+    // Otherwise just spread it
+    return { ...value };
+  };
+
+  if (board instanceof Map) {
+    board.forEach((value, key) => {
+      cloned[key] = extractPiece(value);
+    });
+    return cloned;
+  }
+
   for (const key of Object.keys(board)) {
-    cloned[key] = board[key] ? { ...board[key] } : null;
+    cloned[key] = extractPiece(board[key]);
   }
   return cloned;
 }
@@ -266,8 +282,13 @@ function clearSelection(game) {
  * @returns {'white'|'black'|null}
  */
 function getPlayerColor(game, playerId) {
-  if (game.whitePlayerId === playerId) return 'white';
-  if (game.blackPlayerId === playerId) return 'black';
+  // Convert to strings for comparison (handles ObjectId vs string mismatch)
+  const whiteId = game.whitePlayerId ? String(game.whitePlayerId) : null;
+  const blackId = game.blackPlayerId ? String(game.blackPlayerId) : null;
+  const reqPlayerId = playerId ? String(playerId) : null;
+
+  if (whiteId === reqPlayerId) return 'white';
+  if (blackId === reqPlayerId) return 'black';
   return null;
 }
 

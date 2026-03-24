@@ -212,8 +212,6 @@ exports.handleGameAction = async (req, res) => {
     const { id } = req.params;
     const { playerId, action } = req.body;
 
-    console.log(`🎮 Action received for game ${id}:`, action?.type);
-
     try {
         // Validate request structure
         if (!playerId || !action || !action.type) {
@@ -240,6 +238,7 @@ exports.handleGameAction = async (req, res) => {
 
         // Convert Mongoose document to plain object for processing
         const gameState = game.toObject();
+
         // Convert Map to plain object if needed
         if (gameState.currentBoardStatus instanceof Map) {
             const boardObj = {};
@@ -360,11 +359,17 @@ exports.handleGameAction = async (req, res) => {
             emitGameEnd(io, id, savedGame);
         }
 
-        console.log(`✅ Action ${action.type} processed successfully`);
+        // Convert to plain object with Maps flattened for JSON serialization
+        const gameStateResponse = savedGame.toObject({ flattenMaps: true });
+
+        // Ensure _id is a string (some frontends expect this)
+        if (gameStateResponse._id) {
+            gameStateResponse._id = gameStateResponse._id.toString();
+        }
 
         return res.json({
             success: true,
-            gameState: savedGame,
+            gameState: gameStateResponse,
         });
 
     } catch (error) {
