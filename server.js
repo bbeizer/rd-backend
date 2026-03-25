@@ -129,6 +129,13 @@ try {
   console.warn('⚠️ Failed to load feedback routes:', err.message);
 }
 
+try {
+  const userRoutes = require('./routes/userRoutes');
+  app.use('/api/users', userRoutes);
+} catch (err) {
+  console.warn('⚠️ Failed to load user routes:', err.message);
+}
+
 // Centralized error handler (should be last)
 app.use(require('./middleware/errorHandler'));
 

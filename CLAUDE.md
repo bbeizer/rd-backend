@@ -20,6 +20,7 @@ npm start       # Start production server
 
 ### API Routes
 - `/api/games` - Game CRUD and matchmaking (gameRoutes.js -> gameController.js)
+- `/api/users` - User auth and profile management (userRoutes.js -> userController.js)
 - `/api/feedback` - Email feedback via Resend (feedback.js)
 
 ### Models
@@ -52,4 +53,5 @@ Board uses algebraic notation (a1-h8). Each cell is either `null` or:
 Required in `.env`:
 - `MONGO_URI` - MongoDB connection string
 - `PORT` - Server port (default 5000)
+- `JWT_SECRET` - Secret key for JWT token signing
 - `RESEND_API_KEY` - For feedback emails
