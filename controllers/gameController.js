@@ -45,9 +45,28 @@ exports.startAndJoinSinglePlayerGame = async (req, res) => {
         newGame.gameType = 'singleplayer'; // Explicitly set for single player
         newGame.aiColor = playerColor === 'white' ? 'black' : 'white';
         newGame.playerColor = playerColor; // <-- Add this line for consistency
-        const { game: createdGame } = await addPlayerToGame(
+        let { game: createdGame } = await addPlayerToGame(
             newGame, playerId, playerName, playerColor, true
         );
+
+        // If AI is white, it moves first
+        if (createdGame.aiColor === 'white') {
+            const gameState = createdGame.toObject();
+            const updatedState = makeAIMove(gameState);
+
+            // Update game with AI's first move
+            createdGame.currentBoardStatus = updatedState.currentBoardStatus;
+            createdGame.currentPlayerTurn = updatedState.currentPlayerTurn;
+            createdGame.turnNumber = updatedState.turnNumber;
+
+            // Check for win (unlikely on first move but be consistent)
+            if (updatedState.status === 'completed') {
+                createdGame.status = updatedState.status;
+                createdGame.winner = updatedState.winner;
+            }
+
+            await createdGame.save();
+        }
 
         // 🔌 Emit WebSocket event for single player game creation
         const io = req.app.get('io');
@@ -267,17 +286,20 @@ exports.handleGameAction = async (req, res) => {
 
             case 'PASS_TURN':
                 result = handlePassTurn(gameState, playerId);
+                console.log('🎯 PASS_TURN - After handlePassTurn:', {
+                    currentPlayerTurn: result.game.currentPlayerTurn,
+                    gameType: game.gameType,
+                    aiColor: game.aiColor
+                });
 
                 // Handle AI turn in singleplayer
                 if (result.success && game.gameType === 'singleplayer' && game.aiColor) {
                     const nextTurn = result.game.currentPlayerTurn;
+                    console.log('🤖 AI check:', { nextTurn, aiColor: game.aiColor, willMakeAIMove: nextTurn === game.aiColor });
                     if (nextTurn === game.aiColor) {
-                        // Make AI move
+                        // Make AI move (also switches turn back to player and increments turn number)
                         result.game = makeAIMove(result.game);
-                        // Switch turn back to player
-                        const playerColor = game.aiColor === 'white' ? 'black' : 'white';
-                        result.game.currentPlayerTurn = playerColor;
-                        result.game.turnNumber = (result.game.turnNumber || 0) + 1;
+                        console.log('🤖 After makeAIMove:', { currentPlayerTurn: result.game.currentPlayerTurn });
                     }
                 }
                 break;
@@ -332,11 +354,13 @@ exports.handleGameAction = async (req, res) => {
             game.hasMoved = updatedGameState.hasMoved;
         }
         if (updatedGameState.currentPlayerTurn !== undefined) {
+            console.log('📝 Setting currentPlayerTurn:', updatedGameState.currentPlayerTurn);
             game.currentPlayerTurn = updatedGameState.currentPlayerTurn;
         }
         if (updatedGameState.turnNumber !== undefined) {
             game.turnNumber = updatedGameState.turnNumber;
         }
+        console.log('💾 About to save game with currentPlayerTurn:', game.currentPlayerTurn);
         if (updatedGameState.status !== undefined) {
             game.status = updatedGameState.status;
         }

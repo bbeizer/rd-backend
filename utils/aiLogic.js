@@ -307,7 +307,7 @@ function minimax(board, depth, alpha, beta, isMaximizing, aiColor, currentTurn) 
  * Make the best AI move using minimax
  * @param {Object} game - Current game state
  * @param {number} [depth] - Search depth (default: AI_CONFIG.DEFAULT_DEPTH)
- * @returns {Object} Updated game state after AI move
+ * @returns {Object} Updated game state after AI move (turn switched back to player)
  */
 function makeAIMove(game, depth = AI_CONFIG.DEFAULT_DEPTH) {
   const aiColor = game.aiColor;
@@ -339,9 +339,14 @@ function makeAIMove(game, depth = AI_CONFIG.DEFAULT_DEPTH) {
   // Check win condition
   const winner = didWin(newBoard);
 
+  // Switch turn back to the player after AI move
+  const playerColor = aiColor === 'white' ? 'black' : 'white';
+
   const newGame = {
     ...game,
     currentBoardStatus: newBoard,
+    currentPlayerTurn: playerColor,
+    turnNumber: (game.turnNumber || 0) + 1,
     activePiece: null,
     movedPiece: { position: null },
     originalSquare: null,
