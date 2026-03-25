@@ -346,6 +346,15 @@ exports.handleGameAction = async (req, res) => {
         if (updatedGameState.hasMoved !== undefined) {
             game.hasMoved = updatedGameState.hasMoved;
         }
+        if (updatedGameState.ballPassFrom !== undefined) {
+            game.ballPassFrom = updatedGameState.ballPassFrom;
+        }
+        if (updatedGameState.ballPassTo !== undefined) {
+            game.ballPassTo = updatedGameState.ballPassTo;
+        }
+        if (updatedGameState.moveHistory !== undefined) {
+            game.moveHistory = updatedGameState.moveHistory;
+        }
         if (updatedGameState.currentPlayerTurn !== undefined) {
             game.currentPlayerTurn = updatedGameState.currentPlayerTurn;
         }

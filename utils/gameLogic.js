@@ -391,6 +391,9 @@ function handleCellClick(game, cellKey, playerId) {
           activePiece: { position: cellKey, color: clickedPiece.color, hasBall: true },
           possiblePasses: newPossiblePasses,
           possibleMoves: [],
+          // Track ball pass for move history
+          ballPassFrom: activePiece.position,
+          ballPassTo: cellKey,
         };
 
         if (winner) {
@@ -530,6 +533,31 @@ function handlePassTurn(game, playerId) {
     };
   }
 
+  // Build move history entry from current turn state
+  const historyEntry = {
+    turnNumber: game.turnNumber || 0,
+    player: playerColor,
+  };
+
+  // Record piece movement if one occurred
+  if (game.movedPiece?.position && game.originalSquare) {
+    historyEntry.pieceMove = {
+      from: game.originalSquare,
+      to: game.movedPiece.position,
+    };
+  }
+
+  // Record ball pass if one occurred
+  if (game.ballPassFrom && game.ballPassTo) {
+    historyEntry.ballPass = {
+      from: game.ballPassFrom,
+      to: game.ballPassTo,
+    };
+  }
+
+  // Add to move history
+  const moveHistory = [...(game.moveHistory || []), historyEntry];
+
   // Switch turn
   const nextTurn = playerColor === 'white' ? 'black' : 'white';
 
@@ -543,6 +571,10 @@ function handlePassTurn(game, playerId) {
     possibleMoves: [],
     possiblePasses: [],
     turnNumber: (game.turnNumber || 0) + 1,
+    moveHistory,
+    // Reset ball pass tracking for next turn
+    ballPassFrom: null,
+    ballPassTo: null,
   };
 
   return { success: true, game: newGame };
