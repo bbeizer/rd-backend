@@ -1,7 +1,14 @@
 const Game = require('../models/Game');
 const queueManager = require('../utils/queueManager');
 const { initializeBoardStatus } = require('../utils/gameInitialization');
-const { emitGameUpdate, emitGameStarted, emitGameEnd } = require('../utils/socketManager');
+const {
+    emitGameUpdate,
+    emitGameStarted,
+    emitGameEnd,
+    emitRematchRequested,
+    emitRematchDeclined,
+    emitRematchReady
+} = require('../utils/socketManager');
 const {
     handleCellClick,
     handlePassTurn,
@@ -407,3 +414,195 @@ exports.handleGameAction = async (req, res) => {
         });
     }
 };
+
+/**
+ * Request or accept a rematch
+ * POST /api/games/:id/rematch
+ */
+exports.requestRematch = async (req, res) => {
+    const { id } = req.params;
+    const { playerId, playerColor: chosenColor } = req.body;
+
+    try {
+        const game = await Game.findById(id);
+        if (!game) {
+            return res.status(404).json({ message: 'Game not found' });
+        }
+
+        if (game.status !== 'completed') {
+            return res.status(400).json({ message: 'Game is not completed yet' });
+        }
+
+        // Already has a rematch game
+        if (game.rematchGameId) {
+            return res.status(400).json({
+                message: 'Rematch already created',
+                rematchGameId: game.rematchGameId
+            });
+        }
+
+        // Determine player color
+        const isWhite = String(game.whitePlayerId) === String(playerId);
+        const isBlack = String(game.blackPlayerId) === String(playerId);
+
+        if (!isWhite && !isBlack) {
+            return res.status(403).json({ message: 'You are not a player in this game' });
+        }
+
+        const playerColor = isWhite ? 'white' : 'black';
+        const io = req.app.get('io');
+
+        // Single player: create rematch immediately
+        if (game.gameType === 'singleplayer') {
+            const newGame = await createRematchGame(game, chosenColor);
+            game.rematchGameId = newGame._id;
+            await game.save();
+
+            return res.status(201).json({
+                message: 'Rematch game created',
+                rematchGameId: newGame._id,
+                game: newGame
+            });
+        }
+
+        // Multiplayer: track rematch requests
+        if (playerColor === 'white') {
+            game.whiteWantsRematch = true;
+        } else {
+            game.blackWantsRematch = true;
+        }
+
+        await game.save();
+
+        // Check if both players want rematch
+        if (game.whiteWantsRematch && game.blackWantsRematch) {
+            const newGame = await createRematchGame(game);
+            game.rematchGameId = newGame._id;
+            await game.save();
+
+            emitRematchReady(io, id, newGame._id.toString());
+
+            return res.status(201).json({
+                message: 'Rematch game created',
+                rematchGameId: newGame._id,
+                game: newGame
+            });
+        }
+
+        // Notify other player
+        emitRematchRequested(io, id, playerColor);
+
+        return res.json({
+            message: 'Rematch requested',
+            whiteWantsRematch: game.whiteWantsRematch,
+            blackWantsRematch: game.blackWantsRematch
+        });
+
+    } catch (error) {
+        console.error('Error requesting rematch:', error);
+        res.status(500).json({ message: 'Error requesting rematch', error: error.message });
+    }
+};
+
+/**
+ * Decline a rematch request
+ * DELETE /api/games/:id/rematch
+ */
+exports.declineRematch = async (req, res) => {
+    const { id } = req.params;
+    const { playerId } = req.body;
+
+    try {
+        const game = await Game.findById(id);
+        if (!game) {
+            return res.status(404).json({ message: 'Game not found' });
+        }
+
+        // Determine player color
+        const isWhite = String(game.whitePlayerId) === String(playerId);
+        const isBlack = String(game.blackPlayerId) === String(playerId);
+
+        if (!isWhite && !isBlack) {
+            return res.status(403).json({ message: 'You are not a player in this game' });
+        }
+
+        const playerColor = isWhite ? 'white' : 'black';
+
+        // Reset rematch flags
+        game.whiteWantsRematch = false;
+        game.blackWantsRematch = false;
+        await game.save();
+
+        const io = req.app.get('io');
+        emitRematchDeclined(io, id, playerColor);
+
+        return res.json({ message: 'Rematch declined' });
+
+    } catch (error) {
+        console.error('Error declining rematch:', error);
+        res.status(500).json({ message: 'Error declining rematch', error: error.message });
+    }
+};
+
+/**
+ * Helper: Create a new game as a rematch of the original
+ * Swaps player colors for variety
+ * @param {Object} originalGame - The original game document
+ * @param {string} [chosenColor] - Optional color choice for singleplayer ('white' or 'black')
+ */
+async function createRematchGame(originalGame, chosenColor) {
+    const newGame = new Game(initializeBoardStatus());
+
+    newGame.gameType = originalGame.gameType;
+    newGame.status = 'playing';
+
+    if (originalGame.gameType === 'singleplayer') {
+        // Get the player's ID and name (the non-AI player)
+        const playerId = originalGame.whitePlayerId || originalGame.blackPlayerId;
+        const playerName = originalGame.aiColor === 'white'
+            ? originalGame.blackPlayerName
+            : originalGame.whitePlayerName;
+
+        // Determine new color: use chosen color if provided, otherwise swap
+        let newPlayerColor;
+        if (chosenColor === 'white' || chosenColor === 'black') {
+            newPlayerColor = chosenColor;
+        } else {
+            const playerWasWhite = originalGame.whitePlayerId && !originalGame.blackPlayerId;
+            newPlayerColor = playerWasWhite ? 'black' : 'white';
+        }
+
+        if (newPlayerColor === 'white') {
+            newGame.whitePlayerId = playerId;
+            newGame.whitePlayerName = playerName;
+            newGame.blackPlayerName = 'AI';
+            newGame.aiColor = 'black';
+        } else {
+            newGame.blackPlayerId = playerId;
+            newGame.blackPlayerName = playerName;
+            newGame.whitePlayerName = 'AI';
+            newGame.aiColor = 'white';
+        }
+
+        // If AI is white, make AI's first move
+        if (newGame.aiColor === 'white') {
+            const gameState = newGame.toObject();
+            const updatedState = makeAIMove(gameState);
+            newGame.currentBoardStatus = updatedState.currentBoardStatus;
+            newGame.currentPlayerTurn = updatedState.currentPlayerTurn;
+            newGame.turnNumber = updatedState.turnNumber;
+            if (updatedState.moveHistory) {
+                newGame.moveHistory = updatedState.moveHistory;
+            }
+        }
+    } else {
+        // Multiplayer: swap colors
+        newGame.whitePlayerId = originalGame.blackPlayerId;
+        newGame.whitePlayerName = originalGame.blackPlayerName;
+        newGame.blackPlayerId = originalGame.whitePlayerId;
+        newGame.blackPlayerName = originalGame.whitePlayerName;
+    }
+
+    await newGame.save();
+    return newGame;
+}

@@ -68,10 +68,52 @@ const emitMoveValidation = (io, gameId, playerId, result) => {
     }
 };
 
+/**
+ * Emit rematch requested event to all players in a game room
+ * @param {Object} io - Socket.IO instance
+ * @param {string} gameId - Game ID
+ * @param {string} requestingPlayer - Color of player requesting rematch ('white' or 'black')
+ */
+const emitRematchRequested = (io, gameId, requestingPlayer) => {
+    if (io) {
+        io.to(gameId).emit('rematchRequested', { requestingPlayer });
+        console.log(`📡 Rematch requested by ${requestingPlayer} for game: ${gameId}`);
+    }
+};
+
+/**
+ * Emit rematch declined event to all players in a game room
+ * @param {Object} io - Socket.IO instance
+ * @param {string} gameId - Game ID
+ * @param {string} decliningPlayer - Color of player declining rematch
+ */
+const emitRematchDeclined = (io, gameId, decliningPlayer) => {
+    if (io) {
+        io.to(gameId).emit('rematchDeclined', { decliningPlayer });
+        console.log(`📡 Rematch declined by ${decliningPlayer} for game: ${gameId}`);
+    }
+};
+
+/**
+ * Emit rematch ready event when both players agree
+ * @param {Object} io - Socket.IO instance
+ * @param {string} gameId - Original game ID
+ * @param {string} newGameId - New game ID
+ */
+const emitRematchReady = (io, gameId, newGameId) => {
+    if (io) {
+        io.to(gameId).emit('rematchReady', { newGameId });
+        console.log(`📡 Rematch ready! New game: ${newGameId} (from game: ${gameId})`);
+    }
+};
+
 module.exports = {
     emitGameUpdate,
     emitGameStarted,
     emitTurnChange,
     emitGameEnd,
-    emitMoveValidation
+    emitMoveValidation,
+    emitRematchRequested,
+    emitRematchDeclined,
+    emitRematchReady
 }; 

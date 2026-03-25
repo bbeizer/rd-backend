@@ -13,6 +13,10 @@ router.post('/', gameController.createGame);
 // Action endpoint for game state changes (moves, passes, turns)
 router.post('/:id/action', gameController.handleGameAction);
 
+// Rematch endpoints
+router.post('/:id/rematch', gameController.requestRematch);
+router.delete('/:id/rematch', gameController.declineRematch);
+
 router.route('/:id')
   .get(gameController.getGameById)
   .patch([
