@@ -326,15 +326,30 @@ function makeAIMove(game, depth = AI_CONFIG.DEFAULT_DEPTH) {
     aiColor
   );
 
-  // Apply the best moves to the board
+  // Apply the best moves to the board and track for history
   let newBoard = board;
+  let pieceMove = null;
+  let ballPass = null;
+
   for (const move of result.moves) {
     if (move.type === 'move') {
       newBoard = movePiece(move.from, move.to, newBoard);
+      pieceMove = { from: move.from, to: move.to };
     } else if (move.type === 'pass') {
       newBoard = passBall(move.from, move.to, newBoard);
+      ballPass = { from: move.from, to: move.to };
     }
   }
+
+  // Build AI move history entry
+  const historyEntry = {
+    turnNumber: game.turnNumber || 0,
+    player: aiColor,
+  };
+  if (pieceMove) historyEntry.pieceMove = pieceMove;
+  if (ballPass) historyEntry.ballPass = ballPass;
+
+  const moveHistory = [...(game.moveHistory || []), historyEntry];
 
   // Check win condition
   const winner = didWin(newBoard);
@@ -353,6 +368,9 @@ function makeAIMove(game, depth = AI_CONFIG.DEFAULT_DEPTH) {
     hasMoved: false,
     possibleMoves: [],
     possiblePasses: [],
+    moveHistory,
+    ballPassFrom: null,
+    ballPassTo: null,
   };
 
   if (winner) {

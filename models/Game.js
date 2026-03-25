@@ -62,6 +62,10 @@ const gameSchema = new mongoose.Schema({
   hasMoved: { type: Boolean, default: false },
   originalSquare: { type: String, default: null },
 
+  // Track ball passes during a turn
+  ballPassFrom: { type: String, default: null },
+  ballPassTo: { type: String, default: null },
+
   whitePlayerId: { type: String, ref: 'User' },
   blackPlayerId: { type: String, ref: 'User' },
   whitePlayerName: { type: String },
@@ -79,8 +83,15 @@ const gameSchema = new mongoose.Schema({
 
   moveHistory: [{
     turnNumber: Number,
-    black: String,
-    white: String
+    player: { type: String, enum: ['white', 'black'] },
+    pieceMove: {
+      from: String,
+      to: String
+    },
+    ballPass: {
+      from: String,
+      to: String
+    }
   }],
 
 }, { timestamps: true });
