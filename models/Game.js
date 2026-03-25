@@ -94,6 +94,11 @@ const gameSchema = new mongoose.Schema({
     }
   }],
 
+  // Rematch tracking
+  whiteWantsRematch: { type: Boolean, default: false },
+  blackWantsRematch: { type: Boolean, default: false },
+  rematchGameId: { type: mongoose.Schema.Types.ObjectId, ref: 'Game', default: null },
+
 }, { timestamps: true });
 
 gameSchema.index({ whitePlayerId: 1, blackPlayerId: 1 });
