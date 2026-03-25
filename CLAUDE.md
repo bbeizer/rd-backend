@@ -55,3 +55,4 @@ Required in `.env`:
 - `PORT` - Server port (default 5000)
 - `JWT_SECRET` - Secret key for JWT token signing
 - `RESEND_API_KEY` - For feedback emails
+- `CORS_ORIGIN` - Additional allowed CORS origin (e.g., Vercel preview URL)

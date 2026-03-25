@@ -25,7 +25,8 @@ const allowedOrigins = [
   'http://127.0.0.1:3001',
   'http://127.0.0.1:8080',
   'https://www.razzlndazzle.com',
-];
+  process.env.CORS_ORIGIN,
+].filter(Boolean);
 
 const corsOptions = {
   origin: function (origin, callback) {
