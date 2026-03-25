@@ -421,7 +421,7 @@ exports.handleGameAction = async (req, res) => {
  */
 exports.requestRematch = async (req, res) => {
     const { id } = req.params;
-    const { playerId } = req.body;
+    const { playerId, playerColor: chosenColor } = req.body;
 
     try {
         const game = await Game.findById(id);
@@ -454,7 +454,7 @@ exports.requestRematch = async (req, res) => {
 
         // Single player: create rematch immediately
         if (game.gameType === 'singleplayer') {
-            const newGame = await createRematchGame(game);
+            const newGame = await createRematchGame(game, chosenColor);
             game.rematchGameId = newGame._id;
             await game.save();
 
@@ -547,26 +547,39 @@ exports.declineRematch = async (req, res) => {
 /**
  * Helper: Create a new game as a rematch of the original
  * Swaps player colors for variety
+ * @param {Object} originalGame - The original game document
+ * @param {string} [chosenColor] - Optional color choice for singleplayer ('white' or 'black')
  */
-async function createRematchGame(originalGame) {
+async function createRematchGame(originalGame, chosenColor) {
     const newGame = new Game(initializeBoardStatus());
 
     newGame.gameType = originalGame.gameType;
     newGame.status = 'playing';
 
     if (originalGame.gameType === 'singleplayer') {
-        // Keep same player, swap colors
-        const playerWasWhite = originalGame.whitePlayerId && !originalGame.blackPlayerId;
-        const newPlayerColor = playerWasWhite ? 'black' : 'white';
+        // Get the player's ID and name (the non-AI player)
+        const playerId = originalGame.whitePlayerId || originalGame.blackPlayerId;
+        const playerName = originalGame.aiColor === 'white'
+            ? originalGame.blackPlayerName
+            : originalGame.whitePlayerName;
+
+        // Determine new color: use chosen color if provided, otherwise swap
+        let newPlayerColor;
+        if (chosenColor === 'white' || chosenColor === 'black') {
+            newPlayerColor = chosenColor;
+        } else {
+            const playerWasWhite = originalGame.whitePlayerId && !originalGame.blackPlayerId;
+            newPlayerColor = playerWasWhite ? 'black' : 'white';
+        }
 
         if (newPlayerColor === 'white') {
-            newGame.whitePlayerId = originalGame.whitePlayerId || originalGame.blackPlayerId;
-            newGame.whitePlayerName = originalGame.whitePlayerName || originalGame.blackPlayerName;
+            newGame.whitePlayerId = playerId;
+            newGame.whitePlayerName = playerName;
             newGame.blackPlayerName = 'AI';
             newGame.aiColor = 'black';
         } else {
-            newGame.blackPlayerId = originalGame.whitePlayerId || originalGame.blackPlayerId;
-            newGame.blackPlayerName = originalGame.whitePlayerName || originalGame.blackPlayerName;
+            newGame.blackPlayerId = playerId;
+            newGame.blackPlayerName = playerName;
             newGame.whitePlayerName = 'AI';
             newGame.aiColor = 'white';
         }
