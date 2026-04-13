@@ -601,11 +601,16 @@ function evaluateAdvanced(board, color) {
   // Knight mobility
   score += countKnightMobility(board, color) * 3;
 
-  // Piece advancement
+  // Piece advancement — scaled down when opponent ball is advanced
+  // When they're close to scoring, defense matters more than pushing pieces forward
   const myPieces = findPieces(board, color);
+  const oppBallAdv = findBallHolder(board, opponentColor)
+    ? getAdvancement(getKeyCoordinates(findBallHolder(board, opponentColor).cellKey).row, opponentColor)
+    : 0;
+  const advWeight = oppBallAdv >= 4 ? 3 : 8;
   for (const { cellKey } of myPieces) {
     const { row } = getKeyCoordinates(cellKey);
-    score += getAdvancement(row, color) * 8;
+    score += getAdvancement(row, color) * advWeight;
   }
 
   // --- Defensive evaluation (at ~90% weight) ---
@@ -651,6 +656,43 @@ function evaluateAdvanced(board, color) {
   else if (ourThreat === 1) score += 250;
   else if (ourThreat === 2) score += 120;
   else if (ourThreat === 3) score += 50;
+
+  // --- Goal lane blocking ---
+  // Reward our pieces that sit between the opponent's ball holder and their goal row.
+  // This directly incentivizes defensive positioning in the scoring lanes.
+  const oppBH = findBallHolder(board, opponentColor);
+  if (oppBH) {
+    const oppGoalRow = opponentColor === 'white' ? 0 : 7;
+    const bhRow = getKeyCoordinates(oppBH.cellKey).row;
+    const bhCol = getKeyCoordinates(oppBH.cellKey).col;
+    // Direction from ball holder toward THEIR goal row (where they want to score)
+    const goalDir = oppGoalRow > bhRow ? 1 : (oppGoalRow < bhRow ? -1 : 0);
+
+    const directions = [
+      { dx: 0, dy: goalDir },                       // straight toward goal
+      { dx: 1, dy: goalDir }, { dx: -1, dy: goalDir }, // diagonals toward goal
+    ];
+
+    for (const { dx, dy } of directions) {
+      let r = bhRow + dy;
+      let c = bhCol + dx;
+      while (r >= 0 && r < 8 && c >= 0 && c < 8) {
+        const target = board[toCellKey(r, c)];
+        if (target) {
+          if (target.color === color) {
+            // Our piece is blocking this scoring lane — reward heavily
+            // Scales quadratically with ball advancement: the closer to scoring,
+            // the more critical it is to have a blocker in the lane
+            const bhAdv = getAdvancement(bhRow, opponentColor);
+            score += 20 + bhAdv * bhAdv * 5;
+          }
+          break;
+        }
+        r += dy;
+        c += dx;
+      }
+    }
+  }
 
   return score;
 }
