@@ -29,50 +29,22 @@ const DIFFICULTY_CONFIGS = {
 };
 
 // ============================================
-// ZOBRIST HASHING
+// BOARD HASHING (for transposition table)
 // ============================================
 
-// Generate deterministic pseudo-random 32-bit integers for Zobrist keys.
-// Using a simple seeded PRNG so hashes are consistent across runs.
-function mulberry32(seed) {
-  return function() {
-    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
-    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
-    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
-    return ((t ^ t >>> 14) >>> 0);
-  };
-}
-
-const _rng = mulberry32(0xDEADBEEF);
-
-// Piece types: white, white+ball, black, black+ball = 4 types
-// Squares: 64 (a1-h8)
-// zobristTable[squareIndex][pieceType] = random 32-bit int
-const ZOBRIST_TABLE = [];
-for (let sq = 0; sq < 64; sq++) {
-  ZOBRIST_TABLE[sq] = [_rng(), _rng(), _rng(), _rng()];
-}
-
-function pieceTypeIndex(piece) {
-  // 0=white, 1=white+ball, 2=black, 3=black+ball
-  return (piece.color === 'white' ? 0 : 2) + (piece.hasBall ? 1 : 0);
-}
-
-function squareIndex(cellKey) {
-  const col = cellKey.charCodeAt(0) - 97; // a=0
-  const row = 8 - parseInt(cellKey.slice(1), 10); // 8->0, 1->7
-  return row * 8 + col;
-}
-
+// Collision-free string hash: sorted list of piece descriptors.
+// e.g. "B*e8Bc8Bd8Bf8W*d1Wc1We1Wf1"
+// With only 8 pieces this is fast and gives a perfect 1:1 mapping.
 function hashBoard(board) {
-  let h = 0;
+  const parts = [];
   for (const cellKey of Object.keys(board)) {
     const piece = board[cellKey];
     if (piece) {
-      h ^= ZOBRIST_TABLE[squareIndex(cellKey)][pieceTypeIndex(piece)];
+      parts.push((piece.color === 'white' ? 'W' : 'B') + (piece.hasBall ? '*' : '') + cellKey);
     }
   }
-  return h;
+  parts.sort();
+  return parts.join('');
 }
 
 // ============================================
@@ -476,7 +448,9 @@ function opponentDeliveryThreat(board, color) {
   let minDist = 99;
 
   for (const { cellKey } of oppPieces) {
-    const pieceSq = squareIndex(cellKey);
+    const col = cellKey.charCodeAt(0) - 97;
+    const sqRow = 8 - parseInt(cellKey.slice(1), 10);
+    const pieceSq = sqRow * 8 + col;
 
     // Check if piece is already on goal row in the chain
     const { row } = getKeyCoordinates(cellKey);
