@@ -361,6 +361,115 @@ function countKnightMobility(board, color) {
   return mobility;
 }
 
+// Precomputed minimum knight moves between any two squares on 8x8 board.
+// KNIGHT_DIST[from_sq][to_sq] = minimum moves (0-6).
+const KNIGHT_DIST = (() => {
+  const dist = Array.from({ length: 64 }, () => new Uint8Array(64).fill(255));
+  const offsets = [[-2,1],[-1,2],[1,2],[2,1],[2,-1],[1,-2],[-1,-2],[-2,-1]];
+
+  for (let start = 0; start < 64; start++) {
+    dist[start][start] = 0;
+    const queue = [start];
+    let head = 0;
+    while (head < queue.length) {
+      const sq = queue[head++];
+      const r = sq >> 3, c = sq & 7;
+      const d = dist[start][sq] + 1;
+      for (const [dr, dc] of offsets) {
+        const nr = r + dr, nc = c + dc;
+        if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+          const nsq = nr * 8 + nc;
+          if (dist[start][nsq] === 255) {
+            dist[start][nsq] = d;
+            queue.push(nsq);
+          }
+        }
+      }
+    }
+  }
+  return dist;
+})();
+
+/**
+ * Estimate how close the opponent is to delivering the ball to our goal row.
+ * Finds delivery squares (empty goal-row squares in the passing chain's lanes),
+ * then uses precomputed knight distances to find the closest opponent piece.
+ *
+ * Returns minimum knight-move distance (0 = can score now, 99 = no path).
+ */
+function opponentDeliveryThreat(board, color) {
+  const opponentColor = color === 'white' ? 'black' : 'white';
+  const oppBallHolder = findBallHolder(board, opponentColor);
+  if (!oppBallHolder) return 99;
+
+  const goalRow = color === 'white' ? 7 : 0;
+
+  const directions = [
+    { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
+    { dx: 0, dy: 1 }, { dx: 0, dy: -1 },
+    { dx: 1, dy: 1 }, { dx: 1, dy: -1 },
+    { dx: -1, dy: 1 }, { dx: -1, dy: -1 },
+  ];
+
+  // Get passing chain
+  const chainPieces = new Set([oppBallHolder.cellKey]);
+  let queue = [oppBallHolder.cellKey];
+  while (queue.length > 0) {
+    const nextQueue = [];
+    for (const cellKey of queue) {
+      const passes = getValidPasses(cellKey, opponentColor, board);
+      for (const pt of passes) {
+        if (!chainPieces.has(pt)) {
+          chainPieces.add(pt);
+          nextQueue.push(pt);
+        }
+      }
+    }
+    queue = nextQueue;
+  }
+
+  // Find delivery squares: empty goal-row squares in chain pieces' passing lanes
+  const deliverySquareIndices = [];
+  for (const cellKey of chainPieces) {
+    const { row, col } = getKeyCoordinates(cellKey);
+    for (const { dx, dy } of directions) {
+      let r = row + dy;
+      let c = col + dx;
+      while (r >= 0 && r < 8 && c >= 0 && c < 8) {
+        const target = board[toCellKey(r, c)];
+        if (target) break;
+        if (r === goalRow) {
+          deliverySquareIndices.push(r * 8 + c);
+        }
+        r += dy;
+        c += dx;
+      }
+    }
+  }
+
+  if (deliverySquareIndices.length === 0) return 99;
+
+  // Use precomputed knight distances — O(pieces * deliverySquares) lookups, no BFS
+  const oppPieces = findPieces(board, opponentColor).filter(p => !p.piece.hasBall);
+  let minDist = 99;
+
+  for (const { cellKey } of oppPieces) {
+    const pieceSq = squareIndex(cellKey);
+
+    // Check if piece is already on goal row in the chain
+    const { row } = getKeyCoordinates(cellKey);
+    if (row === goalRow && chainPieces.has(cellKey)) return 0;
+
+    for (const dSq of deliverySquareIndices) {
+      const d = KNIGHT_DIST[pieceSq][dSq];
+      if (d < minDist) minDist = d;
+      if (minDist <= 1) return minDist; // can't get better than 0 or 1
+    }
+  }
+
+  return minDist;
+}
+
 // ============================================
 // EVALUATION FUNCTIONS
 // ============================================
@@ -526,6 +635,22 @@ function evaluateAdvanced(board, color) {
     const { row } = getKeyCoordinates(cellKey);
     score -= getAdvancement(row, opponentColor) * 7;
   }
+
+  // --- Delivery threat detection ---
+  // How close is the opponent to delivering the ball to our goal row?
+  // This is the "oh crap they're about to score" detector.
+  const oppThreat = opponentDeliveryThreat(board, color);
+  if (oppThreat === 0) score -= 500;       // They can score NOW
+  else if (oppThreat === 1) score -= 300;   // One knight move away from scoring
+  else if (oppThreat === 2) score -= 150;   // Two knight moves away
+  else if (oppThreat === 3) score -= 60;    // Three moves — still dangerous
+
+  // How close are WE to delivering? (flip perspective)
+  const ourThreat = opponentDeliveryThreat(board, opponentColor);
+  if (ourThreat === 0) score += 450;
+  else if (ourThreat === 1) score += 250;
+  else if (ourThreat === 2) score += 120;
+  else if (ourThreat === 3) score += 50;
 
   return score;
 }
