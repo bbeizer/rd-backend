@@ -47,10 +47,11 @@ exports.startOrJoinMultiPlayerGame = async (req, res) => {
 
 exports.startAndJoinSinglePlayerGame = async (req, res) => {
     try {
-        const { playerId, playerName, playerColor } = req.body;
+        const { playerId, playerName, playerColor, difficulty } = req.body;
         const newGame = new Game(initializeBoardStatus());
         newGame.gameType = 'singleplayer'; // Explicitly set for single player
         newGame.aiColor = playerColor === 'white' ? 'black' : 'white';
+        newGame.difficulty = difficulty || 'medium';
         newGame.playerColor = playerColor; // <-- Add this line for consistency
         let { game: createdGame } = await addPlayerToGame(
             newGame, playerId, playerName, playerColor, true
@@ -59,7 +60,7 @@ exports.startAndJoinSinglePlayerGame = async (req, res) => {
         // If AI is white, it moves first
         if (createdGame.aiColor === 'white') {
             const gameState = createdGame.toObject();
-            const updatedState = makeAIMove(gameState);
+            const updatedState = makeAIMove(gameState, createdGame.difficulty);
 
             // Update game with AI's first move
             createdGame.currentBoardStatus = updatedState.currentBoardStatus;
@@ -299,7 +300,7 @@ exports.handleGameAction = async (req, res) => {
                     const nextTurn = result.game.currentPlayerTurn;
                     if (nextTurn === game.aiColor) {
                         // Make AI move (also switches turn back to player and increments turn number)
-                        result.game = makeAIMove(result.game);
+                        result.game = makeAIMove(result.game, game.difficulty || 'medium');
                     }
                 }
                 break;
@@ -554,6 +555,7 @@ async function createRematchGame(originalGame, chosenColor) {
     const newGame = new Game(initializeBoardStatus());
 
     newGame.gameType = originalGame.gameType;
+    newGame.difficulty = originalGame.difficulty || 'medium';
     newGame.status = 'playing';
 
     if (originalGame.gameType === 'singleplayer') {
@@ -587,7 +589,7 @@ async function createRematchGame(originalGame, chosenColor) {
         // If AI is white, make AI's first move
         if (newGame.aiColor === 'white') {
             const gameState = newGame.toObject();
-            const updatedState = makeAIMove(gameState);
+            const updatedState = makeAIMove(gameState, newGame.difficulty);
             newGame.currentBoardStatus = updatedState.currentBoardStatus;
             newGame.currentPlayerTurn = updatedState.currentPlayerTurn;
             newGame.turnNumber = updatedState.turnNumber;

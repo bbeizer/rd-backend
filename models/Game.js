@@ -71,6 +71,7 @@ const gameSchema = new mongoose.Schema({
   whitePlayerName: { type: String },
   blackPlayerName: { type: String },
   aiColor: { type: String, enum: ["white", "black", null], default: null },
+  difficulty: { type: String, enum: ['easy', 'medium', 'hard'], default: 'medium' },
 
   turnNumber: { type: Number, default: 0 },
 
