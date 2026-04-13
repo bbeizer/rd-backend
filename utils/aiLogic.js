@@ -25,8 +25,55 @@ const AI_CONFIG = {
 const DIFFICULTY_CONFIGS = {
   easy:   { depth: 1, evalFn: 'simple',   topN: 3 },
   medium: { depth: 3, evalFn: 'standard', topN: 1 },
-  hard:   { depth: 3, evalFn: 'advanced', topN: 1 },
+  hard:   { depth: 4, evalFn: 'advanced', topN: 1 },
 };
+
+// ============================================
+// ZOBRIST HASHING
+// ============================================
+
+// Generate deterministic pseudo-random 32-bit integers for Zobrist keys.
+// Using a simple seeded PRNG so hashes are consistent across runs.
+function mulberry32(seed) {
+  return function() {
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0);
+  };
+}
+
+const _rng = mulberry32(0xDEADBEEF);
+
+// Piece types: white, white+ball, black, black+ball = 4 types
+// Squares: 64 (a1-h8)
+// zobristTable[squareIndex][pieceType] = random 32-bit int
+const ZOBRIST_TABLE = [];
+for (let sq = 0; sq < 64; sq++) {
+  ZOBRIST_TABLE[sq] = [_rng(), _rng(), _rng(), _rng()];
+}
+
+function pieceTypeIndex(piece) {
+  // 0=white, 1=white+ball, 2=black, 3=black+ball
+  return (piece.color === 'white' ? 0 : 2) + (piece.hasBall ? 1 : 0);
+}
+
+function squareIndex(cellKey) {
+  const col = cellKey.charCodeAt(0) - 97; // a=0
+  const row = 8 - parseInt(cellKey.slice(1), 10); // 8->0, 1->7
+  return row * 8 + col;
+}
+
+function hashBoard(board) {
+  let h = 0;
+  for (const cellKey of Object.keys(board)) {
+    const piece = board[cellKey];
+    if (piece) {
+      h ^= ZOBRIST_TABLE[squareIndex(cellKey)][pieceTypeIndex(piece)];
+    }
+  }
+  return h;
+}
 
 // ============================================
 // BOARD HELPERS
@@ -253,34 +300,46 @@ function countBlockedLanes(board, color) {
 /**
  * Count pieces that can both receive the ball AND pass it forward.
  * These "relay" pieces form the backbone of a passing chain.
+ * Checks pass lines directly without cloning the board.
  */
 function countRelayPieces(board, color) {
   const pieces = findPieces(board, color);
   let relays = 0;
 
+  const directions = [
+    { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
+    { dx: 0, dy: 1 }, { dx: 0, dy: -1 },
+    { dx: 1, dy: 1 }, { dx: 1, dy: -1 },
+    { dx: -1, dy: 1 }, { dx: -1, dy: -1 },
+  ];
+
   for (const { cellKey, piece } of pieces) {
     if (piece.hasBall) continue;
 
-    // Check: can this piece pass forward if it had the ball?
-    // Simulate by temporarily giving it the ball
-    const simBoard = cloneBoard(board);
-    // Find current ball holder and remove ball
-    const ballHolder = findBallHolder(simBoard, color);
-    if (ballHolder) {
-      simBoard[ballHolder.cellKey] = { ...simBoard[ballHolder.cellKey], hasBall: false };
-    }
-    simBoard[cellKey] = { ...simBoard[cellKey], hasBall: true };
-
-    const passes = getValidPasses(cellKey, color, simBoard);
     const pieceRow = getKeyCoordinates(cellKey).row;
+    const pieceCol = getKeyCoordinates(cellKey).col;
     const pieceAdv = getAdvancement(pieceRow, color);
 
-    const hasForwardPass = passes.some(target => {
-      const { row } = getKeyCoordinates(target);
-      return getAdvancement(row, color) > pieceAdv;
-    });
+    // Check if any direction has a friendly piece further toward goal
+    let hasForwardTarget = false;
+    for (const { dx, dy } of directions) {
+      let r = pieceRow + dy;
+      let c = pieceCol + dx;
+      while (r >= 0 && r < 8 && c >= 0 && c < 8) {
+        const target = board[toCellKey(r, c)];
+        if (target) {
+          if (target.color === color && getAdvancement(r, color) > pieceAdv) {
+            hasForwardTarget = true;
+          }
+          break;
+        }
+        r += dy;
+        c += dx;
+      }
+      if (hasForwardTarget) break;
+    }
 
-    if (hasForwardPass) relays++;
+    if (hasForwardTarget) relays++;
   }
 
   return relays;
@@ -483,13 +542,56 @@ function evaluatePosition(board, color, evalType = 'standard') {
 }
 
 // ============================================
+// MOVE ORDERING
+// ============================================
+
+/**
+ * Quick static score for move ordering. Cheap heuristic that estimates
+ * how good an outcome looks so we search the best-looking moves first.
+ * Better ordering = more alpha-beta cutoffs = exponentially faster search.
+ */
+function quickScore(board, color) {
+  let score = 0;
+  const ballHolder = findBallHolder(board, color);
+  if (ballHolder) {
+    const { row } = getKeyCoordinates(ballHolder.cellKey);
+    score += getAdvancement(row, color) * 100;
+    // Bonus if ball holder has any forward pass
+    const passes = getValidPasses(ballHolder.cellKey, color, board);
+    score += passes.length * 10;
+  }
+  // Check for instant win
+  const winner = didWin(board);
+  if (winner === color) return AI_CONFIG.INFINITY;
+  if (winner) return -AI_CONFIG.INFINITY;
+  return score;
+}
+
+/**
+ * Sort outcomes so the most promising are searched first.
+ * For maximizing player: highest score first.
+ * For minimizing player: lowest score first.
+ */
+function orderOutcomes(outcomes, color, isMaximizing) {
+  // Attach quick scores
+  for (const outcome of outcomes) {
+    outcome._qs = quickScore(outcome.board, color);
+  }
+  if (isMaximizing) {
+    outcomes.sort((a, b) => b._qs - a._qs);
+  } else {
+    outcomes.sort((a, b) => a._qs - b._qs);
+  }
+}
+
+// ============================================
 // MINIMAX ALGORITHM
 // ============================================
 
 /**
- * Minimax with alpha-beta pruning
+ * Minimax with alpha-beta pruning, move ordering, and transposition table
  */
-function minimax(board, depth, alpha, beta, isMaximizing, aiColor, currentTurn, evalType) {
+function minimax(board, depth, alpha, beta, isMaximizing, aiColor, currentTurn, evalType, ttable) {
   // Terminal conditions
   const winner = didWin(board);
   if (winner) {
@@ -506,8 +608,20 @@ function minimax(board, depth, alpha, beta, isMaximizing, aiColor, currentTurn, 
     };
   }
 
+  // Transposition table lookup
+  const boardHash = hashBoard(board);
+  // Encode turn info into the key to distinguish same board with different turn
+  const ttKey = boardHash ^ (isMaximizing ? 0x12345678 : 0);
+  const cached = ttable.get(ttKey);
+  if (cached && cached.depth >= depth) {
+    return { score: cached.score, moves: cached.moves };
+  }
+
   const outcomes = generateTurnOutcomes(board, currentTurn);
   const nextTurn = currentTurn === 'white' ? 'black' : 'white';
+
+  // Sort outcomes for better pruning
+  orderOutcomes(outcomes, aiColor, isMaximizing);
 
   if (isMaximizing) {
     let bestScore = -Infinity;
@@ -516,7 +630,7 @@ function minimax(board, depth, alpha, beta, isMaximizing, aiColor, currentTurn, 
     for (const outcome of outcomes) {
       const result = minimax(
         outcome.board, depth - 1, alpha, beta,
-        false, aiColor, nextTurn, evalType
+        false, aiColor, nextTurn, evalType, ttable
       );
 
       if (result.score > bestScore) {
@@ -528,6 +642,7 @@ function minimax(board, depth, alpha, beta, isMaximizing, aiColor, currentTurn, 
       if (beta <= alpha) break;
     }
 
+    ttable.set(ttKey, { score: bestScore, depth, moves: bestMoves });
     return { score: bestScore, moves: bestMoves };
   } else {
     let bestScore = Infinity;
@@ -536,7 +651,7 @@ function minimax(board, depth, alpha, beta, isMaximizing, aiColor, currentTurn, 
     for (const outcome of outcomes) {
       const result = minimax(
         outcome.board, depth - 1, alpha, beta,
-        true, aiColor, nextTurn, evalType
+        true, aiColor, nextTurn, evalType, ttable
       );
 
       if (result.score < bestScore) {
@@ -548,6 +663,7 @@ function minimax(board, depth, alpha, beta, isMaximizing, aiColor, currentTurn, 
       if (beta <= alpha) break;
     }
 
+    ttable.set(ttKey, { score: bestScore, depth, moves: bestMoves });
     return { score: bestScore, moves: bestMoves };
   }
 }
@@ -571,6 +687,9 @@ function makeAIMove(game, difficulty = 'medium') {
 
   let bestMoves;
 
+  // Fresh transposition table per move
+  const ttable = new Map();
+
   if (config.topN > 1) {
     // Easy mode: score all root outcomes, pick randomly from top N
     const outcomes = generateTurnOutcomes(board, aiColor);
@@ -584,7 +703,7 @@ function makeAIMove(game, difficulty = 'medium') {
               outcome.board, config.depth - 1, -Infinity, Infinity,
               false, aiColor,
               aiColor === 'white' ? 'black' : 'white',
-              config.evalFn
+              config.evalFn, ttable
             ).score
           : evaluatePosition(outcome.board, aiColor, config.evalFn)),
     }));
@@ -596,7 +715,7 @@ function makeAIMove(game, difficulty = 'medium') {
     // Medium/Hard: standard minimax
     const result = minimax(
       board, config.depth, -Infinity, Infinity,
-      true, aiColor, aiColor, config.evalFn
+      true, aiColor, aiColor, config.evalFn, ttable
     );
     bestMoves = result.moves;
   }
