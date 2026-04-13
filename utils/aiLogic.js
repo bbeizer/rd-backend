@@ -520,9 +520,6 @@ function evaluateSimple(board, color) {
     score -= getAdvancement(row, opponentColor) * 60;
   }
 
-  // Random noise makes easy AI unpredictable and beatable
-  score += Math.random() * 300 - 150;
-
   return score;
 }
 
@@ -626,8 +623,9 @@ function evaluateAdvanced(board, color) {
   // Piece advancement — scaled down when opponent ball is advanced
   // When they're close to scoring, defense matters more than pushing pieces forward
   const myPieces = findPieces(board, color);
-  const oppBallAdv = findBallHolder(board, opponentColor)
-    ? getAdvancement(getKeyCoordinates(findBallHolder(board, opponentColor).cellKey).row, opponentColor)
+  const opponentBallHolder = findBallHolder(board, opponentColor);
+  const oppBallAdv = opponentBallHolder
+    ? getAdvancement(getKeyCoordinates(opponentBallHolder.cellKey).row, opponentColor)
     : 0;
   const advWeight = oppBallAdv >= 4 ? 3 : 8;
   for (const { cellKey } of myPieces) {
@@ -637,7 +635,6 @@ function evaluateAdvanced(board, color) {
 
   // --- Defensive evaluation (at ~90% weight) ---
 
-  const opponentBallHolder = findBallHolder(board, opponentColor);
   if (opponentBallHolder) {
     const { row } = getKeyCoordinates(opponentBallHolder.cellKey);
     score -= getAdvancement(row, opponentColor) * 90;
@@ -682,13 +679,12 @@ function evaluateAdvanced(board, color) {
   // --- Goal lane blocking ---
   // Reward our pieces that block scoring lanes from ANY piece in the opponent's
   // passing chain, not just the ball holder. The threat comes from the whole chain.
-  const oppBH = findBallHolder(board, opponentColor);
-  if (oppBH) {
+  if (opponentBallHolder) {
     const oppGoalRow = opponentColor === 'white' ? 0 : 7;
 
     // BFS to find all pieces in opponent's passing chain
-    const chainPieces = new Set([oppBH.cellKey]);
-    let chainQueue = [oppBH.cellKey];
+    const chainPieces = new Set([opponentBallHolder.cellKey]);
+    let chainQueue = [opponentBallHolder.cellKey];
     while (chainQueue.length > 0) {
       const nextQueue = [];
       for (const ck of chainQueue) {
