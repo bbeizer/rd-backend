@@ -123,21 +123,51 @@ function getAdvancement(row, color) {
  * Generate all possible turn outcomes for a color
  * A turn can include: pass only, move only, or move + pass
  */
+/**
+ * BFS through all reachable pass chains from the current ball holder on the given board.
+ * The ball can be passed unlimited times per turn through friendly pieces in straight lines.
+ * Returns one outcome per reachable ball destination (deduplicated by final ball position).
+ */
+function generatePassChains(board, color) {
+  const ballHolder = findBallHolder(board, color);
+  if (!ballHolder) return [];
+
+  const results = [];
+  const reachedTargets = new Set(); // deduplicate by final ball position
+  // BFS queue entries: { board, ballHolderKey, passMoves, visited }
+  const queue = [{ board, ballHolderKey: ballHolder.cellKey, passMoves: [], visited: new Set([ballHolder.cellKey]) }];
+
+  while (queue.length > 0) {
+    const { board: curBoard, ballHolderKey, passMoves, visited } = queue.shift();
+    const passes = getValidPasses(ballHolderKey, color, curBoard);
+
+    for (const passTarget of passes) {
+      if (visited.has(passTarget)) continue;
+      const newBoard = passBall(ballHolderKey, passTarget, curBoard);
+      const newMoves = [...passMoves, { type: 'pass', from: ballHolderKey, to: passTarget }];
+
+      // Only keep the first path to each final ball position
+      if (!reachedTargets.has(passTarget)) {
+        reachedTargets.add(passTarget);
+        results.push({ board: newBoard, passMoves: newMoves });
+      }
+
+      const newVisited = new Set(visited);
+      newVisited.add(passTarget);
+      queue.push({ board: newBoard, ballHolderKey: passTarget, passMoves: newMoves, visited: newVisited });
+    }
+  }
+
+  return results;
+}
+
 function generateTurnOutcomes(board, color) {
   const outcomes = [];
   const pieces = findPieces(board, color);
-  const ballHolder = findBallHolder(board, color);
 
-  // Option 1: Pass only (if ball holder has valid passes)
-  if (ballHolder) {
-    const passes = getValidPasses(ballHolder.cellKey, color, board);
-    for (const passTarget of passes) {
-      const newBoard = passBall(ballHolder.cellKey, passTarget, board);
-      outcomes.push({
-        board: newBoard,
-        moves: [{ type: 'pass', from: ballHolder.cellKey, to: passTarget }],
-      });
-    }
+  // Option 1: Pass chain only (no piece move, just pass the ball through the network)
+  for (const { board: passedBoard, passMoves } of generatePassChains(board, color)) {
+    outcomes.push({ board: passedBoard, moves: passMoves });
   }
 
   // Option 2: Move only (any piece without the ball)
@@ -154,26 +184,18 @@ function generateTurnOutcomes(board, color) {
     }
   }
 
-  // Option 3: Move + Pass (move a piece, then pass the ball)
+  // Option 3: Move + Pass chain (move a piece, then pass ball through network)
   for (const { cellKey, piece } of pieces) {
     if (!piece.hasBall) {
       const moves = getPieceMoves(cellKey, board, false, null);
       for (const moveTarget of moves) {
         const boardAfterMove = movePiece(cellKey, moveTarget, board);
 
-        const newBallHolder = findBallHolder(boardAfterMove, color);
-        if (newBallHolder) {
-          const passes = getValidPasses(newBallHolder.cellKey, color, boardAfterMove);
-          for (const passTarget of passes) {
-            const finalBoard = passBall(newBallHolder.cellKey, passTarget, boardAfterMove);
-            outcomes.push({
-              board: finalBoard,
-              moves: [
-                { type: 'move', from: cellKey, to: moveTarget },
-                { type: 'pass', from: newBallHolder.cellKey, to: passTarget },
-              ],
-            });
-          }
+        for (const { board: finalBoard, passMoves } of generatePassChains(boardAfterMove, color)) {
+          outcomes.push({
+            board: finalBoard,
+            moves: [{ type: 'move', from: cellKey, to: moveTarget }, ...passMoves],
+          });
         }
       }
     }
@@ -658,38 +680,55 @@ function evaluateAdvanced(board, color) {
   else if (ourThreat === 3) score += 50;
 
   // --- Goal lane blocking ---
-  // Reward our pieces that sit between the opponent's ball holder and their goal row.
-  // This directly incentivizes defensive positioning in the scoring lanes.
+  // Reward our pieces that block scoring lanes from ANY piece in the opponent's
+  // passing chain, not just the ball holder. The threat comes from the whole chain.
   const oppBH = findBallHolder(board, opponentColor);
   if (oppBH) {
     const oppGoalRow = opponentColor === 'white' ? 0 : 7;
-    const bhRow = getKeyCoordinates(oppBH.cellKey).row;
-    const bhCol = getKeyCoordinates(oppBH.cellKey).col;
-    // Direction from ball holder toward THEIR goal row (where they want to score)
-    const goalDir = oppGoalRow > bhRow ? 1 : (oppGoalRow < bhRow ? -1 : 0);
 
-    const directions = [
-      { dx: 0, dy: goalDir },                       // straight toward goal
-      { dx: 1, dy: goalDir }, { dx: -1, dy: goalDir }, // diagonals toward goal
-    ];
-
-    for (const { dx, dy } of directions) {
-      let r = bhRow + dy;
-      let c = bhCol + dx;
-      while (r >= 0 && r < 8 && c >= 0 && c < 8) {
-        const target = board[toCellKey(r, c)];
-        if (target) {
-          if (target.color === color) {
-            // Our piece is blocking this scoring lane — reward heavily
-            // Scales quadratically with ball advancement: the closer to scoring,
-            // the more critical it is to have a blocker in the lane
-            const bhAdv = getAdvancement(bhRow, opponentColor);
-            score += 20 + bhAdv * bhAdv * 5;
+    // BFS to find all pieces in opponent's passing chain
+    const chainPieces = new Set([oppBH.cellKey]);
+    let chainQueue = [oppBH.cellKey];
+    while (chainQueue.length > 0) {
+      const nextQueue = [];
+      for (const ck of chainQueue) {
+        const passes = getValidPasses(ck, opponentColor, board);
+        for (const pt of passes) {
+          if (!chainPieces.has(pt)) {
+            chainPieces.add(pt);
+            nextQueue.push(pt);
           }
-          break;
         }
-        r += dy;
-        c += dx;
+      }
+      chainQueue = nextQueue;
+    }
+
+    // Check scoring lanes from every piece in the chain
+    for (const chainKey of chainPieces) {
+      const { row: pRow, col: pCol } = getKeyCoordinates(chainKey);
+      const goalDir = oppGoalRow > pRow ? 1 : (oppGoalRow < pRow ? -1 : 0);
+      if (goalDir === 0) continue; // already on goal row
+
+      const directions = [
+        { dx: 0, dy: goalDir },
+        { dx: 1, dy: goalDir }, { dx: -1, dy: goalDir },
+      ];
+
+      for (const { dx, dy } of directions) {
+        let r = pRow + dy;
+        let c = pCol + dx;
+        while (r >= 0 && r < 8 && c >= 0 && c < 8) {
+          const target = board[toCellKey(r, c)];
+          if (target) {
+            if (target.color === color) {
+              const pAdv = getAdvancement(pRow, opponentColor);
+              score += 20 + pAdv * pAdv * 5;
+            }
+            break;
+          }
+          r += dy;
+          c += dx;
+        }
       }
     }
   }
