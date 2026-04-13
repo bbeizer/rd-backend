@@ -787,7 +787,7 @@ function minimax(board, depth, alpha, beta, isMaximizing, aiColor, currentTurn, 
   // Transposition table lookup
   const boardHash = hashBoard(board);
   // Encode turn info into the key to distinguish same board with different turn
-  const ttKey = boardHash ^ (isMaximizing ? 0x12345678 : 0);
+  const ttKey = boardHash + (isMaximizing ? '|MAX' : '|MIN');
   const cached = ttable.get(ttKey);
   if (cached && cached.depth >= depth) {
     return { score: cached.score, moves: cached.moves };
