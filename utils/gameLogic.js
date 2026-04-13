@@ -399,6 +399,24 @@ function handleCellClick(game, cellKey, playerId) {
         if (winner) {
           newGame.status = 'completed';
           newGame.winner = winner === 'white' ? game.whitePlayerName : game.blackPlayerName;
+
+          // Build move history entry for the winning move since
+          // the player won't hit "pass turn" to trigger the normal recording
+          const historyEntry = {
+            turnNumber: game.turnNumber || 0,
+            player: clickedPiece.color,
+          };
+          if (game.movedPiece?.position && game.originalSquare) {
+            historyEntry.pieceMove = {
+              from: game.originalSquare,
+              to: game.movedPiece.position,
+            };
+          }
+          historyEntry.ballPass = {
+            from: activePiece.position,
+            to: cellKey,
+          };
+          newGame.moveHistory = [...(game.moveHistory || []), historyEntry];
         }
 
         return { success: true, game: newGame };
