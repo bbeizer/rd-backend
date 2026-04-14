@@ -380,6 +380,18 @@ function handleCellClick(game, cellKey, playerId) {
       if (activePiece && activePiece.hasBall && game.possiblePasses && game.possiblePasses.includes(cellKey)) {
         // Execute ball pass
         const newBoard = passBall(activePiece.position, cellKey, board);
+        const updatedBallPassChain = [
+          ...(game.ballPassChain || []),
+          { from: activePiece.position, to: cellKey },
+        ];
+        const updatedTurnActionStates = [
+          ...(game.turnActionStates || []),
+          {
+            actionType: 'ballPass',
+            ballPass: { from: activePiece.position, to: cellKey },
+            boardSnapshot: cloneBoard(newBoard),
+          },
+        ];
 
         // Check win condition
         const winner = didWin(newBoard);
@@ -392,8 +404,10 @@ function handleCellClick(game, cellKey, playerId) {
           possiblePasses: newPossiblePasses,
           possibleMoves: [],
           // Track ball pass for move history
-          ballPassFrom: activePiece.position,
+          ballPassFrom: game.ballPassFrom || activePiece.position,
           ballPassTo: cellKey,
+          ballPassChain: updatedBallPassChain,
+          turnActionStates: updatedTurnActionStates,
         };
 
         if (winner) {
@@ -412,10 +426,12 @@ function handleCellClick(game, cellKey, playerId) {
               to: game.movedPiece.position,
             };
           }
-          historyEntry.ballPass = {
-            from: activePiece.position,
-            to: cellKey,
-          };
+          historyEntry.ballPasses = updatedBallPassChain;
+          if (updatedBallPassChain.length === 1) {
+            historyEntry.ballPass = updatedBallPassChain[0];
+          }
+          historyEntry.actionStates = updatedTurnActionStates;
+          historyEntry.boardSnapshot = cloneBoard(newBoard);
           newGame.moveHistory = [...(game.moveHistory || []), historyEntry];
         }
 
@@ -473,6 +489,14 @@ function handleCellClick(game, cellKey, playerId) {
       if (!game.movedPiece || !game.movedPiece.position) {
         const newBoard = movePiece(activePiece.position, cellKey, board);
         const movedPiece = newBoard[cellKey];
+        const updatedTurnActionStates = [
+          ...(game.turnActionStates || []),
+          {
+            actionType: 'pieceMove',
+            pieceMove: { from: activePiece.position, to: cellKey },
+            boardSnapshot: cloneBoard(newBoard),
+          },
+        ];
 
         return {
           success: true,
@@ -485,6 +509,7 @@ function handleCellClick(game, cellKey, playerId) {
             hasMoved: true,
             possibleMoves: [activePiece.position], // Can only return
             possiblePasses: [],
+            turnActionStates: updatedTurnActionStates,
           }
         };
       }
@@ -504,6 +529,7 @@ function handleCellClick(game, cellKey, playerId) {
             hasMoved: false,
             possibleMoves: [],
             possiblePasses: [],
+            turnActionStates: [],
           }
         };
       }
@@ -565,13 +591,21 @@ function handlePassTurn(game, playerId) {
     };
   }
 
-  // Record ball pass if one occurred
-  if (game.ballPassFrom && game.ballPassTo) {
-    historyEntry.ballPass = {
-      from: game.ballPassFrom,
-      to: game.ballPassTo,
-    };
+  // Record full ball pass chain if one occurred
+  const ballPassChain = game.ballPassChain || [];
+  const actionStates = game.turnActionStates || [];
+  if (ballPassChain.length > 0) {
+    historyEntry.ballPasses = ballPassChain;
+    if (ballPassChain.length === 1) {
+      historyEntry.ballPass = ballPassChain[0];
+    }
+  } else if (game.ballPassFrom && game.ballPassTo) {
+    // Backward compatibility for legacy state snapshots
+    historyEntry.ballPass = { from: game.ballPassFrom, to: game.ballPassTo };
+    historyEntry.ballPasses = [{ from: game.ballPassFrom, to: game.ballPassTo }];
   }
+  historyEntry.actionStates = actionStates;
+  historyEntry.boardSnapshot = cloneBoard(game.currentBoardStatus);
 
   // Add to move history
   const moveHistory = [...(game.moveHistory || []), historyEntry];
@@ -593,6 +627,8 @@ function handlePassTurn(game, playerId) {
     // Reset ball pass tracking for next turn
     ballPassFrom: null,
     ballPassTo: null,
+    ballPassChain: [],
+    turnActionStates: [],
   };
 
   return { success: true, game: newGame };

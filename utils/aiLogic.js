@@ -899,15 +899,26 @@ function makeAIMove(game, difficulty = 'medium') {
   // Apply the best moves to the board
   let newBoard = board;
   let pieceMove = null;
-  let ballPass = null;
+  const ballPasses = [];
+  const actionStates = [];
 
   for (const move of bestMoves) {
     if (move.type === 'move') {
       newBoard = movePiece(move.from, move.to, newBoard);
       pieceMove = { from: move.from, to: move.to };
+      actionStates.push({
+        actionType: 'pieceMove',
+        pieceMove: { from: move.from, to: move.to },
+        boardSnapshot: cloneBoard(newBoard),
+      });
     } else if (move.type === 'pass') {
       newBoard = passBall(move.from, move.to, newBoard);
-      ballPass = { from: move.from, to: move.to };
+      ballPasses.push({ from: move.from, to: move.to });
+      actionStates.push({
+        actionType: 'ballPass',
+        ballPass: { from: move.from, to: move.to },
+        boardSnapshot: cloneBoard(newBoard),
+      });
     }
   }
 
@@ -917,7 +928,14 @@ function makeAIMove(game, difficulty = 'medium') {
     player: aiColor,
   };
   if (pieceMove) historyEntry.pieceMove = pieceMove;
-  if (ballPass) historyEntry.ballPass = ballPass;
+  if (ballPasses.length > 0) {
+    historyEntry.ballPasses = ballPasses;
+    if (ballPasses.length === 1) {
+      historyEntry.ballPass = ballPasses[0];
+    }
+  }
+  historyEntry.actionStates = actionStates;
+  historyEntry.boardSnapshot = cloneBoard(newBoard);
 
   const moveHistory = [...(game.moveHistory || []), historyEntry];
 
@@ -939,6 +957,8 @@ function makeAIMove(game, difficulty = 'medium') {
     moveHistory,
     ballPassFrom: null,
     ballPassTo: null,
+    ballPassChain: [],
+    turnActionStates: [],
   };
 
   if (winner) {
