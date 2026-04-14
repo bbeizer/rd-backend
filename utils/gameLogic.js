@@ -529,7 +529,7 @@ function handleCellClick(game, cellKey, playerId) {
             hasMoved: false,
             possibleMoves: [],
             possiblePasses: [],
-            turnActionStates: [],
+            turnActionStates: (game.turnActionStates || []).filter(a => a.actionType !== 'pieceMove'),
           }
         };
       }
