@@ -360,6 +360,12 @@ exports.handleGameAction = async (req, res) => {
         if (updatedGameState.ballPassTo !== undefined) {
             game.ballPassTo = updatedGameState.ballPassTo;
         }
+        if (updatedGameState.ballPassChain !== undefined) {
+            game.ballPassChain = updatedGameState.ballPassChain;
+        }
+        if (updatedGameState.turnActionStates !== undefined) {
+            game.turnActionStates = updatedGameState.turnActionStates;
+        }
         if (updatedGameState.moveHistory !== undefined) {
             game.moveHistory = updatedGameState.moveHistory;
         }

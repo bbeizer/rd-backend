@@ -1,6 +1,19 @@
 const mongoose = require('mongoose');
 const messageSchema = require('./Message');
 
+const actionStateSchema = new mongoose.Schema({
+  actionType: { type: String, enum: ['pieceMove', 'ballPass'] },
+  pieceMove: {
+    from: String,
+    to: String,
+  },
+  ballPass: {
+    from: String,
+    to: String,
+  },
+  boardSnapshot: { type: mongoose.Schema.Types.Mixed, default: {} },
+}, { _id: false });
+
 const gameSchema = new mongoose.Schema({
   status: {
     type: String,
@@ -65,6 +78,17 @@ const gameSchema = new mongoose.Schema({
   // Track ball passes during a turn
   ballPassFrom: { type: String, default: null },
   ballPassTo: { type: String, default: null },
+  ballPassChain: {
+    type: [{
+      from: String,
+      to: String,
+    }],
+    default: [],
+  },
+  turnActionStates: {
+    type: [actionStateSchema],
+    default: [],
+  },
 
   whitePlayerId: { type: String, ref: 'User' },
   blackPlayerId: { type: String, ref: 'User' },
@@ -92,7 +116,16 @@ const gameSchema = new mongoose.Schema({
     ballPass: {
       from: String,
       to: String
-    }
+    },
+    ballPasses: [{
+      from: String,
+      to: String
+    }],
+    actionStates: {
+      type: [actionStateSchema],
+      default: [],
+    },
+    boardSnapshot: { type: mongoose.Schema.Types.Mixed, default: {} },
   }],
 
   // Rematch tracking

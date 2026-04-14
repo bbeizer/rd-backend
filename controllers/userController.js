@@ -178,7 +178,7 @@ exports.getUserGames = async (req, res) => {
       $or: [{ whitePlayerId: id }, { blackPlayerId: id }],
       status: 'completed',
     })
-      .select('whitePlayerId blackPlayerId whitePlayerName blackPlayerName winner status createdAt updatedAt')
+      .select('whitePlayerId blackPlayerId whitePlayerName blackPlayerName winner status createdAt updatedAt gameType difficulty aiColor turnNumber')
       .sort({ updatedAt: -1 })
       .limit(50);
 
