@@ -604,8 +604,10 @@ function handlePassTurn(game, playerId) {
     historyEntry.ballPass = { from: game.ballPassFrom, to: game.ballPassTo };
     historyEntry.ballPasses = [{ from: game.ballPassFrom, to: game.ballPassTo }];
   }
-  historyEntry.actionStates = actionStates;
-  historyEntry.boardSnapshot = cloneBoard(game.currentBoardStatus);
+  if (actionStates.length > 0) {
+    historyEntry.actionStates = actionStates;
+    historyEntry.boardSnapshot = cloneBoard(game.currentBoardStatus);
+  }
 
   // Add to move history
   const moveHistory = [...(game.moveHistory || []), historyEntry];
