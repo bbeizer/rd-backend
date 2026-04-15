@@ -851,10 +851,11 @@ function orderOutcomes(outcomes, color, isMaximizing, ttHintMoves) {
  */
 function minimax(board, depth, alpha, beta, isMaximizing, aiColor, currentTurn, evalType, ttable) {
   // Terminal conditions
+  // Add depth so closer wins are preferred (win now > win later)
   const winner = didWin(board);
   if (winner) {
     return {
-      score: winner === aiColor ? AI_CONFIG.INFINITY : -AI_CONFIG.INFINITY,
+      score: winner === aiColor ? AI_CONFIG.INFINITY + depth : -AI_CONFIG.INFINITY - depth,
       moves: [],
     };
   }
