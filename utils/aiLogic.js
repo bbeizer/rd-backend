@@ -8,11 +8,79 @@ const {
   toCellKey,
   getPieceMoves,
   getValidPasses,
-  didWin,
+  didWin: didWinBase,
   cloneBoard,
-  movePiece,
-  passBall,
+  movePiece: movePieceBase,
+  passBall: passBallBase,
 } = require('./gameLogic');
+
+// ============================================
+// AI-OPTIMIZED BOARD OPERATIONS
+// ============================================
+// These skip Mongoose document handling and use sparse boards
+// (only occupied cells stored) for faster iteration in the search tree.
+
+/**
+ * Fast board clone — plain objects only, sparse (skips null cells).
+ * With 8 pieces this copies ~8 entries instead of 64.
+ */
+function cloneBoardFast(board) {
+  const cloned = {};
+  for (const key of Object.keys(board)) {
+    const p = board[key];
+    if (p) cloned[key] = { color: p.color, hasBall: p.hasBall, position: p.position, id: p.id };
+  }
+  return cloned;
+}
+
+/** Move piece using fast sparse clone */
+function movePiece(sourceKey, targetKey, board) {
+  const newBoard = cloneBoardFast(board);
+  const piece = newBoard[sourceKey];
+  if (piece) {
+    newBoard[targetKey] = { color: piece.color, hasBall: piece.hasBall, position: targetKey, id: piece.id };
+    delete newBoard[sourceKey];
+  }
+  return newBoard;
+}
+
+/** Pass ball using fast sparse clone */
+function passBall(sourceKey, targetKey, board) {
+  const newBoard = cloneBoardFast(board);
+  const src = newBoard[sourceKey];
+  const tgt = newBoard[targetKey];
+  if (src && tgt) {
+    newBoard[sourceKey] = { color: src.color, hasBall: false, position: src.position, id: src.id };
+    newBoard[targetKey] = { color: tgt.color, hasBall: true, position: tgt.position, id: tgt.id };
+  }
+  return newBoard;
+}
+
+/** Expand sparse board back to full 64-cell format for the frontend */
+function expandBoard(board) {
+  const full = {};
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      const key = toCellKey(r, c);
+      const p = board[key];
+      full[key] = p ? { color: p.color, hasBall: p.hasBall, position: p.position, id: p.id } : null;
+    }
+  }
+  return full;
+}
+
+/** Fast win check — iterates only occupied cells (~8) instead of checking 16 goal-row cells */
+function didWin(board) {
+  for (const key of Object.keys(board)) {
+    const piece = board[key];
+    if (piece && piece.hasBall) {
+      const { row } = getKeyCoordinates(key);
+      if (piece.color === 'white' && row === 0) return 'white';
+      if (piece.color === 'black' && row === 7) return 'black';
+    }
+  }
+  return null;
+}
 
 // ============================================
 // CONFIGURATION
@@ -175,7 +243,7 @@ function generateTurnOutcomes(board, color) {
 
   // Option 4: No action (always valid fallback)
   outcomes.push({
-    board: cloneBoard(board),
+    board: cloneBoardFast(board),
     moves: [],
   });
 
@@ -859,7 +927,7 @@ function makeAIMove(game, difficulty = 'medium') {
   if (!aiColor) return game;
 
   const config = DIFFICULTY_CONFIGS[difficulty] || DIFFICULTY_CONFIGS.medium;
-  const board = cloneBoard(game.currentBoardStatus);
+  const board = cloneBoardFast(cloneBoard(game.currentBoardStatus));
 
   let bestMoves;
 
@@ -909,7 +977,7 @@ function makeAIMove(game, difficulty = 'medium') {
       actionStates.push({
         actionType: 'pieceMove',
         pieceMove: { from: move.from, to: move.to },
-        boardSnapshot: cloneBoard(newBoard),
+        boardSnapshot: expandBoard(newBoard),
       });
     } else if (move.type === 'pass') {
       newBoard = passBall(move.from, move.to, newBoard);
@@ -917,7 +985,7 @@ function makeAIMove(game, difficulty = 'medium') {
       actionStates.push({
         actionType: 'ballPass',
         ballPass: { from: move.from, to: move.to },
-        boardSnapshot: cloneBoard(newBoard),
+        boardSnapshot: expandBoard(newBoard),
       });
     }
   }
@@ -935,7 +1003,7 @@ function makeAIMove(game, difficulty = 'medium') {
     }
   }
   historyEntry.actionStates = actionStates;
-  historyEntry.boardSnapshot = cloneBoard(newBoard);
+  historyEntry.boardSnapshot = expandBoard(newBoard);
 
   const moveHistory = [...(game.moveHistory || []), historyEntry];
 
@@ -945,7 +1013,7 @@ function makeAIMove(game, difficulty = 'medium') {
 
   const newGame = {
     ...game,
-    currentBoardStatus: newBoard,
+    currentBoardStatus: expandBoard(newBoard),
     currentPlayerTurn: playerColor,
     turnNumber: (game.turnNumber || 0) + 1,
     activePiece: null,
