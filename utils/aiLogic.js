@@ -815,12 +815,26 @@ function quickScore(board, color) {
  * Sort outcomes so the most promising are searched first.
  * For maximizing player: highest score first.
  * For minimizing player: lowest score first.
+ * If a TT hint is available from a shallower search, prioritize that move.
  */
-function orderOutcomes(outcomes, color, isMaximizing) {
-  // Attach quick scores
+function orderOutcomes(outcomes, color, isMaximizing, ttHintMoves) {
   for (const outcome of outcomes) {
     outcome._qs = quickScore(outcome.board, color);
   }
+
+  // Boost TT best move from shallower search to ensure it's searched first
+  if (ttHintMoves && ttHintMoves.length > 0) {
+    const hint = ttHintMoves[0];
+    for (const outcome of outcomes) {
+      if (outcome.moves.length > 0 &&
+          outcome.moves[0].from === hint.from &&
+          outcome.moves[0].to === hint.to) {
+        outcome._qs = isMaximizing ? AI_CONFIG.INFINITY + 1 : -AI_CONFIG.INFINITY - 1;
+        break;
+      }
+    }
+  }
+
   if (isMaximizing) {
     outcomes.sort((a, b) => b._qs - a._qs);
   } else {
@@ -864,8 +878,9 @@ function minimax(board, depth, alpha, beta, isMaximizing, aiColor, currentTurn, 
   const outcomes = generateTurnOutcomes(board, currentTurn);
   const nextTurn = currentTurn === 'white' ? 'black' : 'white';
 
-  // Sort outcomes for better pruning
-  orderOutcomes(outcomes, aiColor, isMaximizing);
+  // Sort outcomes for better pruning, using TT hint from shallower search if available
+  const ttHintMoves = (cached && cached.moves) ? cached.moves : null;
+  orderOutcomes(outcomes, aiColor, isMaximizing, ttHintMoves);
 
   if (isMaximizing) {
     let bestScore = -Infinity;
@@ -956,11 +971,16 @@ function makeAIMove(game, difficulty = 'medium') {
     const candidates = scored.slice(0, Math.min(config.topN, scored.length));
     bestMoves = candidates[Math.floor(Math.random() * candidates.length)].moves;
   } else {
-    // Medium/Hard: standard minimax
-    const result = minimax(
-      board, config.depth, -Infinity, Infinity,
-      true, aiColor, aiColor, config.evalFn, ttable
-    );
+    // Medium/Hard: iterative deepening minimax
+    // Search depth 1, 2, ..., N. Shallower results fill the transposition table,
+    // giving better move ordering at deeper levels → more alpha-beta cutoffs.
+    let result;
+    for (let d = 1; d <= config.depth; d++) {
+      result = minimax(
+        board, d, -Infinity, Infinity,
+        true, aiColor, aiColor, config.evalFn, ttable
+      );
+    }
     bestMoves = result.moves;
   }
 
