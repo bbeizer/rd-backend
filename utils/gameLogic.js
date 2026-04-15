@@ -4,8 +4,19 @@
  */
 
 // ============================================
-// COORDINATE CONVERSION
+// COORDINATE CONVERSION (precomputed lookup tables)
 // ============================================
+
+const COORD_CACHE = {};
+const CELLKEY_CACHE = Array.from({ length: 8 }, () => new Array(8));
+
+for (let r = 0; r < 8; r++) {
+  for (let c = 0; c < 8; c++) {
+    const key = String.fromCharCode(97 + c) + (8 - r);
+    CELLKEY_CACHE[r][c] = key;
+    COORD_CACHE[key] = Object.freeze({ row: r, col: c });
+  }
+}
 
 /**
  * Convert cell key (e.g., "e4") to array indices
@@ -13,9 +24,7 @@
  * @returns {{ row: number, col: number }}
  */
 function getKeyCoordinates(cellKey) {
-  const col = cellKey.charCodeAt(0) - 'a'.charCodeAt(0); // 'a' -> 0, 'h' -> 7
-  const row = 8 - parseInt(cellKey.slice(1), 10);         // '8' -> 0, '1' -> 7
-  return { row, col };
+  return COORD_CACHE[cellKey];
 }
 
 /**
@@ -25,9 +34,7 @@ function getKeyCoordinates(cellKey) {
  * @returns {string} Cell key in algebraic notation
  */
 function toCellKey(row, col) {
-  const letter = String.fromCharCode(97 + col); // 0 -> 'a', 7 -> 'h'
-  const number = 8 - row;                        // 0 -> 8, 7 -> 1
-  return `${letter}${number}`;
+  return CELLKEY_CACHE[row][col];
 }
 
 // ============================================
