@@ -92,7 +92,7 @@ const AI_CONFIG = {
 
 const DIFFICULTY_CONFIGS = {
   easy:   { depth: 1, evalFn: 'simple',   topN: 3 },
-  medium: { depth: 3, evalFn: 'standard', topN: 1 },
+  medium: { depth: 3, evalFn: 'standard', topN: 2 },
   hard:   { depth: 4, evalFn: 'advanced', topN: 1 },
 };
 
@@ -950,38 +950,37 @@ function makeAIMove(game, difficulty = 'medium') {
   // Fresh transposition table per move
   const ttable = new Map();
 
-  if (config.topN > 1) {
-    // Easy mode: score all root outcomes, pick randomly from top N
-    const outcomes = generateTurnOutcomes(board, aiColor);
+  // Iterative deepening minimax for all difficulty levels.
+  // Search depth 1, 2, ..., N. Shallower results fill the transposition table,
+  // giving better move ordering at deeper levels → more alpha-beta cutoffs.
+  let result;
+  for (let d = 1; d <= config.depth; d++) {
+    result = minimax(
+      board, d, -Infinity, Infinity,
+      true, aiColor, aiColor, config.evalFn, ttable
+    );
+  }
 
-    const scored = outcomes.map(outcome => ({
-      moves: outcome.moves,
-      score: outcome.moves.length === 0
-        ? -AI_CONFIG.INFINITY // heavily penalize doing nothing
-        : (config.depth > 0
-          ? minimax(
-              outcome.board, config.depth - 1, -Infinity, Infinity,
-              false, aiColor,
-              aiColor === 'white' ? 'black' : 'white',
-              config.evalFn, ttable
-            ).score
-          : evaluatePosition(outcome.board, aiColor, config.evalFn)),
-    }));
+  if (config.topN > 1) {
+    // Score all root outcomes at full depth, pick randomly from top N.
+    // The TT is already warmed from iterative deepening so this is fast.
+    const outcomes = generateTurnOutcomes(board, aiColor);
+    const nextTurn = aiColor === 'white' ? 'black' : 'white';
+
+    const scored = outcomes
+      .filter(o => o.moves.length > 0)
+      .map(outcome => ({
+        moves: outcome.moves,
+        score: minimax(
+          outcome.board, config.depth - 1, -Infinity, Infinity,
+          false, aiColor, nextTurn, config.evalFn, ttable
+        ).score,
+      }));
 
     scored.sort((a, b) => b.score - a.score);
     const candidates = scored.slice(0, Math.min(config.topN, scored.length));
     bestMoves = candidates[Math.floor(Math.random() * candidates.length)].moves;
   } else {
-    // Medium/Hard: iterative deepening minimax
-    // Search depth 1, 2, ..., N. Shallower results fill the transposition table,
-    // giving better move ordering at deeper levels → more alpha-beta cutoffs.
-    let result;
-    for (let d = 1; d <= config.depth; d++) {
-      result = minimax(
-        board, d, -Infinity, Infinity,
-        true, aiColor, aiColor, config.evalFn, ttable
-      );
-    }
     bestMoves = result.moves;
   }
 
