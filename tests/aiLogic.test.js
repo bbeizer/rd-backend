@@ -242,6 +242,41 @@ describe('Impossible mode', () => {
     assert.ok(cfg.lmr, 'should enable LMR');
     assert.ok(cfg.quiescence, 'should enable quiescence');
   });
+
+  // Regression test for the TT bound-flag correctness fix.
+  // Without exact/lower/upper flags, PVS null-window scout scores get cached
+  // as exact values and corrupt subsequent full-window searches — so a PVS
+  // run at depth N would produce a *different* score than plain alpha-beta
+  // at the same depth. With correct flags, both must return the same score.
+  it('PVS yields same minimax score as plain alpha-beta (TT bound-flag regression)', () => {
+    const board = buildBoard([
+      { key: 'd5', color: 'white', hasBall: true },
+      { key: 'c4', color: 'white', hasBall: false },
+      { key: 'e4', color: 'white', hasBall: false },
+      { key: 'a1', color: 'white', hasBall: false },
+      { key: 'd4', color: 'black', hasBall: true },
+      { key: 'c5', color: 'black', hasBall: false },
+      { key: 'e5', color: 'black', hasBall: false },
+      { key: 'h8', color: 'black', hasBall: false },
+    ]);
+
+    const plainResult = minimax(
+      board, 3, -Infinity, Infinity, true, 'white', 'white', 'impossible', new Map()
+    );
+
+    const pvsSearchState = {
+      deadline: Infinity, nodesSearched: 0, timeUp: false,
+      pvs: true, lmr: false, quiescence: false,
+    };
+    const pvsResult = minimax(
+      board, 3, -Infinity, Infinity, true, 'white', 'white', 'impossible', new Map(), pvsSearchState
+    );
+
+    assert.strictEqual(
+      pvsResult.score, plainResult.score,
+      'PVS and plain alpha-beta should agree on the minimax score at the same depth'
+    );
+  });
 });
 
 describe('Win detection', () => {

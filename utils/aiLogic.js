@@ -919,6 +919,12 @@ const DEFAULT_IMPOSSIBLE_WEIGHTS = {
   deliveryThreat1: 300,
   deliveryThreat2: 150,
   deliveryThreat3: 60,
+  // Our-side delivery threat weights (kept separate from opponent threat so
+  // Phase B can tune offense/defense asymmetry independently).
+  ourDeliveryThreat0: 450,   // mate-in-1 for us (slightly < oppThreat0 to prefer defense)
+  ourDeliveryThreat1: 250,
+  ourDeliveryThreat2: 120,
+  ourDeliveryThreat3: 50,
   // New impossible-mode features
   chainFragility: 25,         // their fragility - our fragility
   networkConnectivity: 5,     // our connectivity - theirs (small per-link weight)
@@ -1011,10 +1017,10 @@ function evaluateImpossible(board, color, weights = DEFAULT_IMPOSSIBLE_WEIGHTS) 
   else if (oppThreat === 3) score -= weights.deliveryThreat3;
 
   const ourThreat = opponentDeliveryThreat(board, opponentColor);
-  if (ourThreat === 0) score += weights.deliveryThreat0 * 0.9;
-  else if (ourThreat === 1) score += weights.deliveryThreat1 * 0.83;
-  else if (ourThreat === 2) score += weights.deliveryThreat2 * 0.8;
-  else if (ourThreat === 3) score += weights.deliveryThreat3 * 0.83;
+  if (ourThreat === 0) score += weights.ourDeliveryThreat0;
+  else if (ourThreat === 1) score += weights.ourDeliveryThreat1;
+  else if (ourThreat === 2) score += weights.ourDeliveryThreat2;
+  else if (ourThreat === 3) score += weights.ourDeliveryThreat3;
 
   // --- New impossible-mode heuristics (us - them) ---
   // Chain fragility: more fragile = worse, so subtract ours, add theirs
@@ -1320,7 +1326,7 @@ function minimax(board, depth, alpha, beta, isMaximizing, aiColor, currentTurn, 
 /**
  * Make the best AI move using minimax with difficulty-based configuration
  * @param {Object} game - Current game state
- * @param {string} [difficulty='medium'] - 'easy', 'medium', or 'hard'
+ * @param {string} [difficulty='medium'] - 'easy', 'medium', 'hard', or 'impossible'
  * @returns {Object} Updated game state after AI move
  */
 function makeAIMove(game, difficulty = 'medium') {
