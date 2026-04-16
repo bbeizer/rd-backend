@@ -568,9 +568,10 @@ function buildPassingChainSet(board, color) {
 }
 
 /**
- * Chain fragility: count chain pieces with only 1 in-chain neighbor.
- * These are single points of failure — capturing/blocking them severs the chain.
- * Higher value = more fragile = bad for the chain owner.
+ * Chain fragility: count chain pieces connected to the chain by a single
+ * passing link. If the opponent moves a blocker into that lane (the game
+ * has no capturing, so chains break via lane-blocking, not piece removal),
+ * the piece falls out of the chain. Higher value = more fragile = bad for us.
  */
 function chainFragility(board, color) {
   const chain = buildPassingChainSet(board, color);
