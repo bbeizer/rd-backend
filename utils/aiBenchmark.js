@@ -36,9 +36,10 @@ function benchmark(label, fn, iterations = 5) {
 
 console.log('AI Benchmark - Starting position\n');
 
-benchmark('Easy   (depth 1)', () => makeAIMove(createMockGame(), 'easy'));
-benchmark('Medium (depth 3)', () => makeAIMove(createMockGame(), 'medium'));
-benchmark('Hard   (depth 4)', () => makeAIMove(createMockGame(), 'hard'));
+benchmark('Easy       (depth 1)', () => makeAIMove(createMockGame(), 'easy'));
+benchmark('Medium     (depth 3)', () => makeAIMove(createMockGame(), 'medium'));
+benchmark('Hard       (depth 4)', () => makeAIMove(createMockGame(), 'hard'));
+benchmark('Impossible (depth 8, 4s budget)', () => makeAIMove(createMockGame(), 'impossible'), 3);
 
 // Also benchmark a mid-game position (after a few moves)
 function createMidGameBoard() {
@@ -59,6 +60,7 @@ function createMidGameBoard() {
 
 console.log('\nAI Benchmark - Mid-game position\n');
 
-benchmark('Easy   (depth 1)', () => makeAIMove(createMidGameBoard(), 'easy'));
-benchmark('Medium (depth 3)', () => makeAIMove(createMidGameBoard(), 'medium'));
-benchmark('Hard   (depth 4)', () => makeAIMove(createMidGameBoard(), 'hard'));
+benchmark('Easy       (depth 1)', () => makeAIMove(createMidGameBoard(), 'easy'));
+benchmark('Medium     (depth 3)', () => makeAIMove(createMidGameBoard(), 'medium'));
+benchmark('Hard       (depth 4)', () => makeAIMove(createMidGameBoard(), 'hard'));
+benchmark('Impossible (depth 8, 4s budget)', () => makeAIMove(createMidGameBoard(), 'impossible'), 3);

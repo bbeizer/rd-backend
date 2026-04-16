@@ -48,6 +48,35 @@ Board uses algebraic notation (a1-h8). Each cell is either `null` or:
 { color: "white"|"black", hasBall: boolean, position: "e1", id: uuid }
 ```
 
+### AI Engine
+The AI lives in `utils/aiLogic.js` — minimax with alpha-beta pruning, iterative deepening, transposition tables, and (for `impossible` mode) PVS + LMR + quiescence extension + time-budgeted search. The game has **no capturing**: chains break via lane-blocking, not piece removal.
+
+**Difficulty tiers** (`DIFFICULTY_CONFIGS`):
+| Level | Depth | Eval | `topN` | Notes |
+|-------|-------|------|--------|-------|
+| easy | 1 | simple | 3 | Random pick among top 3 — beginner-friendly variance |
+| medium | 3 | standard | 2 | Random pick among top 2 |
+| hard | 4 | advanced | 1 | Always plays best — strong but fast |
+| impossible | 8 | impossible | 1 | 4s time budget, PVS + LMR + quiescence — deterministic, beats hard 4-0 |
+
+**Search enhancements (impossible mode only) — plain English:**
+- **PVS (Principal Variation Search)** — Assume the first move in the ordered list is best. Search it with the full window, then search all others with a cheap "null window" that only asks "is this better than the first?" Re-search at full window only if one of them surprises us. Faster than vanilla alpha-beta when move ordering is good.
+- **LMR (Late Move Reductions)** — Moves ranked 4th+ are probably worse than the top few. Search them at reduced depth first; only do a full-depth re-search if the reduced result looks suspiciously good. Skips expensive work on probable-junk moves.
+- **Quiescence extension** — At leaf nodes (depth 0), if the opponent has an immediate scoring threat, extend the search by 1 more ply instead of evaluating. Prevents the horizon effect where the eval calls a position "fine" right before the opponent wins on the next move. Single extension only — guarded by `noExtend` flag to prevent runaway recursion.
+
+**Design philosophy — Phase A vs Phase B:**
+- `evaluateImpossible(board, color, weights = DEFAULT_IMPOSSIBLE_WEIGHTS)` is **parametrically tunable** by design. Every coefficient lives in the `weights` config object — nothing is hardcoded in the function body.
+- **Phase A (done)**: Hand-designed eval features + hand-tuned weights. That's what shipped in `ai/impossible-mode`.
+- **Phase B (future)**: Replace hand-tuned weights with empirically-derived weights via self-play + Texel tuning (logistic regression on `(position, eval) → outcome`). This is the pre-NNUE Stockfish approach. When editing the eval, **do not hardcode multipliers** — add new entries to `DEFAULT_IMPOSSIBLE_WEIGHTS` instead. Plan doc: `/Users/Ben/.claude/plans/bright-wobbling-whisper.md`.
+
+**Search correctness gotcha:** the TT entries use `exact` / `lower` / `upper` bound flags. PVS's null-window scouts produce fail-high/fail-low bound scores, not exact values. Without flags these would be cached as exact and corrupt subsequent full-window searches. Regression test: `tests/aiLogic.test.js` → "PVS yields same minimax score as plain alpha-beta".
+
+**Key files:**
+- `utils/aiLogic.js` — eval functions, minimax, difficulty configs, `makeAIMove` entry point
+- `utils/aiDojo.js` — bot-vs-bot matchup runner for validating difficulty tuning
+- `utils/aiBenchmark.js` — per-difficulty move-time benchmarks
+- `tests/aiLogic.test.js` — unit tests (run via `npm test`, uses `node:test`, **not** Jest)
+
 ## Environment Variables
 
 Required in `.env`:

@@ -194,6 +194,91 @@ describe('Board snapshot integrity', () => {
   });
 });
 
+describe('Impossible mode', () => {
+  it('should produce a valid move from starting position within time budget', () => {
+    const game = createMockGame();
+    const start = Date.now();
+    const result = makeAIMove(game, 'impossible');
+    const elapsed = Date.now() - start;
+
+    assert.ok(result.currentBoardStatus, 'should have a board');
+    assert.strictEqual(result.turnNumber, 1);
+    assert.ok(result.moveHistory.length > 0, 'should record move history');
+    // Budget is 4000ms; allow 2s of slack for the time check granularity
+    assert.ok(elapsed < 6000, `should respect time budget (took ${elapsed}ms)`);
+  });
+
+  it('should produce a 64-cell board (not sparse)', () => {
+    const game = createMockGame();
+    const result = makeAIMove(game, 'impossible');
+    assert.strictEqual(Object.keys(result.currentBoardStatus).length, 64);
+  });
+
+  it('should take an immediate winning pass', () => {
+    const board = buildBoard([
+      { key: 'd7', color: 'white', hasBall: true },
+      { key: 'd8', color: 'white', hasBall: false },
+      { key: 'a1', color: 'white', hasBall: false },
+      { key: 'h1', color: 'white', hasBall: false },
+      { key: 'a8', color: 'black', hasBall: true },
+      { key: 'b8', color: 'black', hasBall: false },
+      { key: 'c6', color: 'black', hasBall: false },
+      { key: 'g1', color: 'black', hasBall: false },
+    ]);
+
+    const game = createMockGame({ currentBoardStatus: board, aiColor: 'white' });
+    const result = makeAIMove(game, 'impossible');
+    assert.strictEqual(result.status, 'completed');
+    assert.strictEqual(result.winner, 'AI');
+  });
+
+  it('should be configured with depth 8, time budget, and search enhancements', () => {
+    const cfg = DIFFICULTY_CONFIGS.impossible;
+    assert.strictEqual(cfg.depth, 8);
+    assert.strictEqual(cfg.evalFn, 'impossible');
+    assert.strictEqual(cfg.topN, 1);
+    assert.ok(cfg.timeLimitMs > 0, 'should have time budget');
+    assert.ok(cfg.pvs, 'should enable PVS');
+    assert.ok(cfg.lmr, 'should enable LMR');
+    assert.ok(cfg.quiescence, 'should enable quiescence');
+  });
+
+  // Regression test for the TT bound-flag correctness fix.
+  // Without exact/lower/upper flags, PVS null-window scout scores get cached
+  // as exact values and corrupt subsequent full-window searches — so a PVS
+  // run at depth N would produce a *different* score than plain alpha-beta
+  // at the same depth. With correct flags, both must return the same score.
+  it('PVS yields same minimax score as plain alpha-beta (TT bound-flag regression)', () => {
+    const board = buildBoard([
+      { key: 'd5', color: 'white', hasBall: true },
+      { key: 'c4', color: 'white', hasBall: false },
+      { key: 'e4', color: 'white', hasBall: false },
+      { key: 'a1', color: 'white', hasBall: false },
+      { key: 'd4', color: 'black', hasBall: true },
+      { key: 'c5', color: 'black', hasBall: false },
+      { key: 'e5', color: 'black', hasBall: false },
+      { key: 'h8', color: 'black', hasBall: false },
+    ]);
+
+    const plainResult = minimax(
+      board, 3, -Infinity, Infinity, true, 'white', 'white', 'impossible', new Map()
+    );
+
+    const pvsSearchState = {
+      deadline: Infinity, nodesSearched: 0, timeUp: false,
+      pvs: true, lmr: false, quiescence: false,
+    };
+    const pvsResult = minimax(
+      board, 3, -Infinity, Infinity, true, 'white', 'white', 'impossible', new Map(), pvsSearchState
+    );
+
+    assert.strictEqual(
+      pvsResult.score, plainResult.score,
+      'PVS and plain alpha-beta should agree on the minimax score at the same depth'
+    );
+  });
+});
+
 describe('Win detection', () => {
   it('should detect white win (ball on row 8)', () => {
     const board = buildBoard([
