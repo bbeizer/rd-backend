@@ -72,3 +72,6 @@ runMatchup('medium', 'hard', 10);
 
 console.log('--- Easy vs Hard ---');
 runMatchup('easy', 'hard', 10);
+
+console.log('--- Hard vs Impossible ---');
+runMatchup('hard', 'impossible', 6);

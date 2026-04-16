@@ -91,9 +91,10 @@ const AI_CONFIG = {
 };
 
 const DIFFICULTY_CONFIGS = {
-  easy:   { depth: 1, evalFn: 'simple',   topN: 3 },
-  medium: { depth: 3, evalFn: 'standard', topN: 2 },
-  hard:   { depth: 4, evalFn: 'advanced', topN: 1 },
+  easy:       { depth: 1, evalFn: 'simple',     topN: 3 },
+  medium:     { depth: 3, evalFn: 'standard',   topN: 2 },
+  hard:       { depth: 4, evalFn: 'advanced',   topN: 1 },
+  impossible: { depth: 8, evalFn: 'impossible', topN: 1, timeLimitMs: 4000, pvs: true, lmr: true, quiescence: true },
 };
 
 // ============================================
@@ -535,6 +536,123 @@ function opponentDeliveryThreat(board, color) {
 }
 
 // ============================================
+// IMPOSSIBLE-MODE FEATURE HELPERS
+// ============================================
+// These return raw values per color (no pre-multiplication).
+// evaluateImpossible combines them with tunable weights so Phase B
+// can replace hand-tuned weights with empirically-tuned values from self-play.
+
+/**
+ * Build the passing chain (set of cellKeys reachable from the ball holder
+ * via friendly pass relays). Used by several impossible-mode heuristics.
+ */
+function buildPassingChainSet(board, color) {
+  const ballHolder = findBallHolder(board, color);
+  if (!ballHolder) return new Set();
+
+  const chain = new Set([ballHolder.cellKey]);
+  let queue = [ballHolder.cellKey];
+  while (queue.length > 0) {
+    const next = [];
+    for (const ck of queue) {
+      for (const target of getValidPasses(ck, color, board)) {
+        if (!chain.has(target)) {
+          chain.add(target);
+          next.push(target);
+        }
+      }
+    }
+    queue = next;
+  }
+  return chain;
+}
+
+/**
+ * Chain fragility: count chain pieces with only 1 in-chain neighbor.
+ * These are single points of failure — capturing/blocking them severs the chain.
+ * Higher value = more fragile = bad for the chain owner.
+ */
+function chainFragility(board, color) {
+  const chain = buildPassingChainSet(board, color);
+  if (chain.size <= 1) return 0;
+
+  let fragile = 0;
+  for (const ck of chain) {
+    let neighbors = 0;
+    for (const target of getValidPasses(ck, color, board)) {
+      if (chain.has(target)) {
+        neighbors++;
+        if (neighbors >= 2) break;
+      }
+    }
+    if (neighbors === 1) fragile++;
+  }
+  return fragile;
+}
+
+/**
+ * Network connectivity: total pass-link count across all friendly pieces.
+ * Counts each piece's outgoing pass options (so each link counted twice).
+ * Higher = more flexible passing network = more options to escape pressure.
+ */
+function networkConnectivity(board, color) {
+  const pieces = findPieces(board, color);
+  let total = 0;
+  for (const { cellKey } of pieces) {
+    total += getValidPasses(cellKey, color, board).length;
+  }
+  return total;
+}
+
+/**
+ * Goal row defense: count friendly pieces sitting on the row where the
+ * opponent scores. Each piece on that row blocks scoring lanes that
+ * pass through its square.
+ *
+ * White defends row 7 (opponent scores there). Black defends row 0.
+ */
+function goalRowDefense(board, color) {
+  const defenseRow = color === 'white' ? 7 : 0;
+  let count = 0;
+  for (const { cellKey } of findPieces(board, color)) {
+    if (getKeyCoordinates(cellKey).row === defenseRow) count++;
+  }
+  return count;
+}
+
+/**
+ * Opponent isolation: count enemy pieces with zero valid pass targets.
+ * Isolated pieces can't relay the ball — they're effectively dead weight
+ * for the opponent's passing chain.
+ */
+function opponentIsolation(board, color) {
+  const oppColor = color === 'white' ? 'black' : 'white';
+  let isolated = 0;
+  for (const { cellKey } of findPieces(board, oppColor)) {
+    if (getValidPasses(cellKey, oppColor, board).length === 0) isolated++;
+  }
+  return isolated;
+}
+
+/**
+ * Chokepoint control: count friendly pieces on central squares (d4, d5, e4, e5)
+ * that connect to 2+ teammates via passing lanes. Central pieces with multiple
+ * connections control the most strategically important squares.
+ */
+const CHOKEPOINT_KEYS = ['d4', 'd5', 'e4', 'e5'];
+function chokepointControl(board, color) {
+  let count = 0;
+  for (const key of CHOKEPOINT_KEYS) {
+    const piece = board[key];
+    if (piece && piece.color === color) {
+      const passes = getValidPasses(key, color, board);
+      if (passes.length >= 2) count++;
+    }
+  }
+  return count;
+}
+
+// ============================================
 // EVALUATION FUNCTIONS
 // ============================================
 
@@ -775,12 +893,149 @@ function evaluateAdvanced(board, color) {
 }
 
 /**
+ * Default weights for evaluateImpossible. These are educated initial guesses;
+ * Phase B (self-play tuning) will replace them with empirically-derived values.
+ *
+ * Each weight is the multiplier applied to a feature's (us - opponent) delta.
+ * Defensive features (chainFragility, opponentIsolation) are inverted in the
+ * eval body so positive weights always mean "more of this is good for us".
+ */
+const DEFAULT_IMPOSSIBLE_WEIGHTS = {
+  // Existing-style features (carried forward from advanced eval)
+  ballAdvancement: 100,
+  pieceAdvancement: 8,
+  pieceAdvancementUnderThreat: 3,
+  forwardPass: 25,
+  lateralPass: 10,
+  backwardPass: 5,
+  ballIsolation0: -80,   // applied as bonus when total passes == 0
+  ballIsolation1: -25,   // applied as bonus when total passes == 1
+  chainFurthest: 60,
+  chainReachesGoal: 150,
+  relayPieces: 20,
+  knightMobility: 3,
+  blockedLanes: 12,
+  deliveryThreat0: 500,
+  deliveryThreat1: 300,
+  deliveryThreat2: 150,
+  deliveryThreat3: 60,
+  // New impossible-mode features
+  chainFragility: 25,         // their fragility - our fragility
+  networkConnectivity: 5,     // our connectivity - theirs (small per-link weight)
+  goalRowDefense: 40,         // our defenders - theirs
+  opponentIsolation: 35,      // their isolated pieces - ours
+  chokepointControl: 25,      // our chokepoint pieces - theirs
+};
+
+/**
+ * Impossible eval - all features from advanced plus 5 new strategic heuristics,
+ * with every weight extracted into a tunable config object.
+ *
+ * Phase B will run self-play with perturbed weights to find the empirically
+ * optimal configuration. The eval *features* (heuristics) are hand-designed;
+ * the *weights* will be data-tuned. This is the pre-NNUE Stockfish approach.
+ */
+function evaluateImpossible(board, color, weights = DEFAULT_IMPOSSIBLE_WEIGHTS) {
+  const opponentColor = color === 'white' ? 'black' : 'white';
+
+  const winner = didWin(board);
+  if (winner === color) return AI_CONFIG.INFINITY;
+  if (winner === opponentColor) return -AI_CONFIG.INFINITY;
+
+  let score = 0;
+
+  // --- Ball position and pass quality (us) ---
+  const ballHolder = findBallHolder(board, color);
+  if (ballHolder) {
+    const { row } = getKeyCoordinates(ballHolder.cellKey);
+    score += getAdvancement(row, color) * weights.ballAdvancement;
+
+    const passes = classifyPasses(board, color);
+    score += passes.forward * weights.forwardPass;
+    score += passes.lateral * weights.lateralPass;
+    score += passes.backward * weights.backwardPass;
+
+    const totalPasses = passes.forward + passes.lateral + passes.backward;
+    if (totalPasses === 0) score += weights.ballIsolation0;
+    else if (totalPasses === 1) score += weights.ballIsolation1;
+  }
+
+  // --- Ball position and pass quality (them) ---
+  const opponentBallHolder = findBallHolder(board, opponentColor);
+  if (opponentBallHolder) {
+    const { row } = getKeyCoordinates(opponentBallHolder.cellKey);
+    score -= getAdvancement(row, opponentColor) * weights.ballAdvancement;
+
+    const oppPasses = classifyPasses(board, opponentColor);
+    score -= oppPasses.forward * weights.forwardPass;
+    score -= oppPasses.lateral * weights.lateralPass;
+    score -= oppPasses.backward * weights.backwardPass;
+
+    const oppTotal = oppPasses.forward + oppPasses.lateral + oppPasses.backward;
+    if (oppTotal === 0) score -= weights.ballIsolation0;
+    else if (oppTotal === 1) score -= weights.ballIsolation1;
+  }
+
+  // --- Passing chain reach (us vs them) ---
+  const ourChain = computePassingChain(board, color);
+  score += ourChain.furthestAdvancement * weights.chainFurthest;
+  if (ourChain.reachesGoal) score += weights.chainReachesGoal;
+
+  const oppChain = computePassingChain(board, opponentColor);
+  score -= oppChain.furthestAdvancement * weights.chainFurthest;
+  if (oppChain.reachesGoal) score -= weights.chainReachesGoal;
+
+  // --- Relay pieces, mobility, blocked lanes ---
+  score += (countRelayPieces(board, color) - countRelayPieces(board, opponentColor)) * weights.relayPieces;
+  score += (countKnightMobility(board, color) - countKnightMobility(board, opponentColor)) * weights.knightMobility;
+  score += countBlockedLanes(board, color) * weights.blockedLanes;
+  score -= countBlockedLanes(board, opponentColor) * weights.blockedLanes;
+
+  // --- Piece advancement (scaled down when opponent ball is advanced) ---
+  const oppBallAdv = opponentBallHolder
+    ? getAdvancement(getKeyCoordinates(opponentBallHolder.cellKey).row, opponentColor)
+    : 0;
+  const advWeight = oppBallAdv >= 4 ? weights.pieceAdvancementUnderThreat : weights.pieceAdvancement;
+  for (const { cellKey } of findPieces(board, color)) {
+    score += getAdvancement(getKeyCoordinates(cellKey).row, color) * advWeight;
+  }
+  for (const { cellKey } of findPieces(board, opponentColor)) {
+    score -= getAdvancement(getKeyCoordinates(cellKey).row, opponentColor) * advWeight;
+  }
+
+  // --- Delivery threat (symmetric) ---
+  const oppThreat = opponentDeliveryThreat(board, color);
+  if (oppThreat === 0) score -= weights.deliveryThreat0;
+  else if (oppThreat === 1) score -= weights.deliveryThreat1;
+  else if (oppThreat === 2) score -= weights.deliveryThreat2;
+  else if (oppThreat === 3) score -= weights.deliveryThreat3;
+
+  const ourThreat = opponentDeliveryThreat(board, opponentColor);
+  if (ourThreat === 0) score += weights.deliveryThreat0 * 0.9;
+  else if (ourThreat === 1) score += weights.deliveryThreat1 * 0.83;
+  else if (ourThreat === 2) score += weights.deliveryThreat2 * 0.8;
+  else if (ourThreat === 3) score += weights.deliveryThreat3 * 0.83;
+
+  // --- New impossible-mode heuristics (us - them) ---
+  // Chain fragility: more fragile = worse, so subtract ours, add theirs
+  score += (chainFragility(board, opponentColor) - chainFragility(board, color)) * weights.chainFragility;
+  score += (networkConnectivity(board, color) - networkConnectivity(board, opponentColor)) * weights.networkConnectivity;
+  score += (goalRowDefense(board, color) - goalRowDefense(board, opponentColor)) * weights.goalRowDefense;
+  // opponentIsolation already returns enemy-isolated count from our perspective
+  score += (opponentIsolation(board, color) - opponentIsolation(board, opponentColor)) * weights.opponentIsolation;
+  score += (chokepointControl(board, color) - chokepointControl(board, opponentColor)) * weights.chokepointControl;
+
+  return score;
+}
+
+/**
  * Dispatch to appropriate eval function based on type
  */
 function evaluatePosition(board, color, evalType = 'standard') {
   switch (evalType) {
     case 'simple': return evaluateSimple(board, color);
     case 'advanced': return evaluateAdvanced(board, color);
+    case 'impossible': return evaluateImpossible(board, color);
     default: return evaluateStandard(board, color);
   }
 }
@@ -847,9 +1102,25 @@ function orderOutcomes(outcomes, color, isMaximizing, ttHintMoves) {
 // ============================================
 
 /**
- * Minimax with alpha-beta pruning, move ordering, and transposition table
+ * Minimax with alpha-beta pruning, move ordering, and transposition table.
+ *
+ * Optional `searchState` object enables time-budgeted search:
+ *   { deadline, nodesSearched, timeUp } — when Date.now() >= deadline,
+ *   sets timeUp and returns aborted results that callers must discard.
+ *
+ * Without searchState (existing call sites), behavior is unchanged.
  */
-function minimax(board, depth, alpha, beta, isMaximizing, aiColor, currentTurn, evalType, ttable) {
+function minimax(board, depth, alpha, beta, isMaximizing, aiColor, currentTurn, evalType, ttable, searchState, noExtend) {
+  // Time budget check (impossible mode only). Check every 4096 nodes via bitwise AND.
+  if (searchState) {
+    if ((searchState.nodesSearched++ & 4095) === 0 && Date.now() >= searchState.deadline) {
+      searchState.timeUp = true;
+    }
+    if (searchState.timeUp) {
+      return { score: 0, moves: [], aborted: true };
+    }
+  }
+
   // Terminal conditions
   // Add depth so closer wins are preferred (win now > win later)
   const winner = didWin(board);
@@ -861,6 +1132,18 @@ function minimax(board, depth, alpha, beta, isMaximizing, aiColor, currentTurn, 
   }
 
   if (depth === 0) {
+    // Quiescence extension: if opponent has an immediate scoring threat,
+    // extend by 1 ply to see if it materializes. Only extend once per branch
+    // (noExtend=true is propagated down to prevent runaway extension chains).
+    if (searchState && searchState.quiescence && !noExtend) {
+      const oppThreat = opponentDeliveryThreat(board, aiColor);
+      if (oppThreat <= 1) {
+        return minimax(
+          board, 1, alpha, beta,
+          isMaximizing, aiColor, currentTurn, evalType, ttable, searchState, true
+        );
+      }
+    }
     return {
       score: evaluatePosition(board, aiColor, evalType),
       moves: [],
@@ -873,7 +1156,21 @@ function minimax(board, depth, alpha, beta, isMaximizing, aiColor, currentTurn, 
   const ttKey = boardHash + (isMaximizing ? '|MAX' : '|MIN');
   const cached = ttable.get(ttKey);
   if (cached && cached.depth >= depth) {
-    return { score: cached.score, moves: cached.moves };
+    // Respect bound flag: 'exact' is always usable, 'lower' (fail-high) only
+    // produces a cutoff if score >= beta, 'upper' (fail-low) only if score <= alpha.
+    // Without flags, PVS null-window scout scores would be cached as exact and
+    // corrupt subsequent full-window searches.
+    if (cached.flag === 'exact') {
+      return { score: cached.score, moves: cached.moves };
+    }
+    if (cached.flag === 'lower' && cached.score >= beta) {
+      return { score: cached.score, moves: cached.moves };
+    }
+    if (cached.flag === 'upper' && cached.score <= alpha) {
+      return { score: cached.score, moves: cached.moves };
+    }
+    // Otherwise the bound is too loose for this window — fall through and search,
+    // but still use cached.moves as an ordering hint below.
   }
 
   const outcomes = generateTurnOutcomes(board, currentTurn);
@@ -883,15 +1180,55 @@ function minimax(board, depth, alpha, beta, isMaximizing, aiColor, currentTurn, 
   const ttHintMoves = (cached && cached.moves) ? cached.moves : null;
   orderOutcomes(outcomes, aiColor, isMaximizing, ttHintMoves);
 
+  const pvs = searchState && searchState.pvs;
+  const lmr = searchState && searchState.lmr;
+
   if (isMaximizing) {
+    const alphaOrig = alpha;
     let bestScore = -Infinity;
     let bestMoves = [];
 
-    for (const outcome of outcomes) {
-      const result = minimax(
-        outcome.board, depth - 1, alpha, beta,
-        false, aiColor, nextTurn, evalType, ttable
-      );
+    for (let i = 0; i < outcomes.length; i++) {
+      const outcome = outcomes[i];
+      let result;
+
+      if ((pvs || lmr) && i > 0) {
+        // Late Move Reduction: search later moves at reduced depth first.
+        // If they fail high, re-search at full depth.
+        let scoutDepth = depth - 1;
+        let reduced = false;
+        if (lmr && i >= 3 && depth >= 3) {
+          scoutDepth = depth - 2;
+          reduced = true;
+        }
+        // Null-window scout (PVS): assume first move was best
+        result = minimax(
+          outcome.board, scoutDepth, alpha, alpha + 1,
+          false, aiColor, nextTurn, evalType, ttable, searchState, noExtend
+        );
+        // Reduced search succeeded — re-search at full depth, still null window
+        if (!result.aborted && reduced && result.score > alpha) {
+          result = minimax(
+            outcome.board, depth - 1, alpha, alpha + 1,
+            false, aiColor, nextTurn, evalType, ttable, searchState
+          );
+        }
+        // Null window failed high — re-search at full window
+        if (!result.aborted && result.score > alpha && result.score < beta) {
+          result = minimax(
+            outcome.board, depth - 1, alpha, beta,
+            false, aiColor, nextTurn, evalType, ttable, searchState
+          );
+        }
+      } else {
+        result = minimax(
+          outcome.board, depth - 1, alpha, beta,
+          false, aiColor, nextTurn, evalType, ttable, searchState, noExtend
+        );
+      }
+
+      // Propagate abort up the stack without polluting TT
+      if (result.aborted) return { score: 0, moves: [], aborted: true };
 
       if (result.score > bestScore) {
         bestScore = result.score;
@@ -902,17 +1239,57 @@ function minimax(board, depth, alpha, beta, isMaximizing, aiColor, currentTurn, 
       if (beta <= alpha) break;
     }
 
-    ttable.set(ttKey, { score: bestScore, depth, moves: bestMoves });
+    // Classify the result relative to the entry window:
+    //   bestScore <= alphaOrig → fail-low → 'upper' bound (true value ≤ bestScore)
+    //   bestScore >= beta      → fail-high (cutoff) → 'lower' bound (true ≥ bestScore)
+    //   otherwise              → 'exact'
+    let flag;
+    if (bestScore <= alphaOrig) flag = 'upper';
+    else if (bestScore >= beta) flag = 'lower';
+    else flag = 'exact';
+    ttable.set(ttKey, { score: bestScore, depth, moves: bestMoves, flag });
     return { score: bestScore, moves: bestMoves };
   } else {
+    const betaOrig = beta;
     let bestScore = Infinity;
     let bestMoves = [];
 
-    for (const outcome of outcomes) {
-      const result = minimax(
-        outcome.board, depth - 1, alpha, beta,
-        true, aiColor, nextTurn, evalType, ttable
-      );
+    for (let i = 0; i < outcomes.length; i++) {
+      const outcome = outcomes[i];
+      let result;
+
+      if ((pvs || lmr) && i > 0) {
+        let scoutDepth = depth - 1;
+        let reduced = false;
+        if (lmr && i >= 3 && depth >= 3) {
+          scoutDepth = depth - 2;
+          reduced = true;
+        }
+        // Null-window scout for minimizing player
+        result = minimax(
+          outcome.board, scoutDepth, beta - 1, beta,
+          true, aiColor, nextTurn, evalType, ttable, searchState, noExtend
+        );
+        if (!result.aborted && reduced && result.score < beta) {
+          result = minimax(
+            outcome.board, depth - 1, beta - 1, beta,
+            true, aiColor, nextTurn, evalType, ttable, searchState
+          );
+        }
+        if (!result.aborted && result.score < beta && result.score > alpha) {
+          result = minimax(
+            outcome.board, depth - 1, alpha, beta,
+            true, aiColor, nextTurn, evalType, ttable, searchState
+          );
+        }
+      } else {
+        result = minimax(
+          outcome.board, depth - 1, alpha, beta,
+          true, aiColor, nextTurn, evalType, ttable, searchState, noExtend
+        );
+      }
+
+      if (result.aborted) return { score: 0, moves: [], aborted: true };
 
       if (result.score < bestScore) {
         bestScore = result.score;
@@ -923,7 +1300,15 @@ function minimax(board, depth, alpha, beta, isMaximizing, aiColor, currentTurn, 
       if (beta <= alpha) break;
     }
 
-    ttable.set(ttKey, { score: bestScore, depth, moves: bestMoves });
+    // Mirror of maximizing branch:
+    //   bestScore >= betaOrig → fail-high → 'lower' bound (true value ≥ bestScore)
+    //   bestScore <= alpha    → fail-low (cutoff) → 'upper' bound (true ≤ bestScore)
+    //   otherwise             → 'exact'
+    let flag;
+    if (bestScore >= betaOrig) flag = 'lower';
+    else if (bestScore <= alpha) flag = 'upper';
+    else flag = 'exact';
+    ttable.set(ttKey, { score: bestScore, depth, moves: bestMoves, flag });
     return { score: bestScore, moves: bestMoves };
   }
 }
@@ -950,15 +1335,42 @@ function makeAIMove(game, difficulty = 'medium') {
   // Fresh transposition table per move
   const ttable = new Map();
 
+  // Time-budgeted iterative deepening + search enhancements (impossible mode only).
+  // For other modes, searchState is undefined and there's zero overhead.
+  const useEnhancements = config.timeLimitMs || config.pvs || config.lmr || config.quiescence;
+  const searchState = useEnhancements ? {
+    deadline: config.timeLimitMs ? Date.now() + config.timeLimitMs : Infinity,
+    nodesSearched: 0,
+    timeUp: false,
+    pvs: !!config.pvs,
+    lmr: !!config.lmr,
+    quiescence: !!config.quiescence,
+  } : null;
+
   // Iterative deepening minimax for all difficulty levels.
   // Search depth 1, 2, ..., N. Shallower results fill the transposition table,
   // giving better move ordering at deeper levels → more alpha-beta cutoffs.
+  // When time-budgeted, break on timeout and use the last fully-completed depth.
   let result;
+  let lastCompletedDepth = 0;
   for (let d = 1; d <= config.depth; d++) {
-    result = minimax(
+    const r = minimax(
       board, d, -Infinity, Infinity,
-      true, aiColor, aiColor, config.evalFn, ttable
+      true, aiColor, aiColor, config.evalFn, ttable, searchState
     );
+    if (r.aborted) break;
+    result = r;
+    lastCompletedDepth = d;
+  }
+
+  // Safety net: if even depth 1 timed out (shouldn't happen with reasonable budget),
+  // fall back to a depth-1 search without time budget so we always return a move.
+  if (!result) {
+    result = minimax(
+      board, 1, -Infinity, Infinity,
+      true, aiColor, aiColor, config.evalFn, ttable, null
+    );
+    lastCompletedDepth = 1;
   }
 
   if (config.topN > 1) {
@@ -972,8 +1384,8 @@ function makeAIMove(game, difficulty = 'medium') {
       .map(outcome => ({
         moves: outcome.moves,
         score: minimax(
-          outcome.board, config.depth - 1, -Infinity, Infinity,
-          false, aiColor, nextTurn, config.evalFn, ttable
+          outcome.board, lastCompletedDepth - 1, -Infinity, Infinity,
+          false, aiColor, nextTurn, config.evalFn, ttable, null
         ).score,
       }));
 
