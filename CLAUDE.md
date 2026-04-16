@@ -59,6 +59,11 @@ The AI lives in `utils/aiLogic.js` — minimax with alpha-beta pruning, iterativ
 | hard | 4 | advanced | 1 | Always plays best — strong but fast |
 | impossible | 8 | impossible | 1 | 4s time budget, PVS + LMR + quiescence — deterministic, beats hard 4-0 |
 
+**Search enhancements (impossible mode only) — plain English:**
+- **PVS (Principal Variation Search)** — Assume the first move in the ordered list is best. Search it with the full window, then search all others with a cheap "null window" that only asks "is this better than the first?" Re-search at full window only if one of them surprises us. Faster than vanilla alpha-beta when move ordering is good.
+- **LMR (Late Move Reductions)** — Moves ranked 4th+ are probably worse than the top few. Search them at reduced depth first; only do a full-depth re-search if the reduced result looks suspiciously good. Skips expensive work on probable-junk moves.
+- **Quiescence extension** — At leaf nodes (depth 0), if the opponent has an immediate scoring threat, extend the search by 1 more ply instead of evaluating. Prevents the horizon effect where the eval calls a position "fine" right before the opponent wins on the next move. Single extension only — guarded by `noExtend` flag to prevent runaway recursion.
+
 **Design philosophy — Phase A vs Phase B:**
 - `evaluateImpossible(board, color, weights = DEFAULT_IMPOSSIBLE_WEIGHTS)` is **parametrically tunable** by design. Every coefficient lives in the `weights` config object — nothing is hardcoded in the function body.
 - **Phase A (done)**: Hand-designed eval features + hand-tuned weights. That's what shipped in `ai/impossible-mode`.
