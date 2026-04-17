@@ -79,8 +79,9 @@ The AI lives in `utils/aiLogic.js` — minimax with alpha-beta pruning, iterativ
 **Search correctness gotcha:** the TT entries use `exact` / `lower` / `upper` bound flags. PVS's null-window scouts produce fail-high/fail-low bound scores, not exact values. Without flags these would be cached as exact and corrupt subsequent full-window searches. Regression test: `tests/aiLogic.test.js` → "PVS yields same minimax score as plain alpha-beta".
 
 **Key files:**
-- `utils/aiLogic.js` — minimax, difficulty configs, `makeAIMove` entry point; delegates impossible eval to `aiImpossibleEval.js`
+- `utils/aiLogic.js` — minimax, difficulty configs, `makeAIMove` entry point; delegates tier evals to `aiEvalTiers.js` and impossible eval to `aiImpossibleEval.js`
 - `utils/aiSparseBoard.js` — AI search sparse board: `cloneBoardFast`, `movePiece`/`passBall`, `expandBoard`, `hashBoard` (TT)
+- `utils/aiEvalTiers.js` — `evaluateSimple` / `evaluateStandard` / `evaluateAdvanced` (easy / medium / hard)
 - `utils/aiEvalCore.js` — shared static-eval helpers (`didWin`, passing-chain metrics, delivery squares / threat) used by easy–impossible evals
 - `utils/aiImpossibleEval.js` — `DEFAULT_IMPOSSIBLE_WEIGHTS` (B-Rabbit), Tortuga/Legacy, `evaluateImpossible`, `computeImpossibleFeatureContributions` (per-key gating for cost), Phase C-lite `atomic*` keys (default 0)
 - `utils/aiDojo.js` — bot-vs-bot matchup runner for validating difficulty tuning
