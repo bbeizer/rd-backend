@@ -94,7 +94,12 @@ const DIFFICULTY_CONFIGS = {
   easy:       { depth: 1, evalFn: 'simple',     topN: 3 },
   medium:     { depth: 3, evalFn: 'standard',   topN: 2 },
   hard:       { depth: 4, evalFn: 'advanced',   topN: 1 },
-  impossible: { depth: 8, evalFn: 'impossible', topN: 1, timeLimitMs: 4000, pvs: true, lmr: true, quiescence: true },
+  // "B-Rabbit" — lean eval, 6 low-value features zeroed for speed.
+  impossible: { depth: 8, evalFn: 'impossible', topN: 1, timeLimitMs: 6000, pvs: true, lmr: true, quiescence: true },
+  // "Tortuga" — full-featured eval, all features active. Benchmarking only.
+  impossible_tortuga: { depth: 8, evalFn: 'impossible', topN: 1, timeLimitMs: 6000, pvs: true, lmr: true, quiescence: true, weightsKey: 'tortuga' },
+  // "Legacy" — pre-win-points weights. Benchmarking only.
+  impossible_legacy: { depth: 8, evalFn: 'impossible', topN: 1, timeLimitMs: 4000, pvs: true, lmr: true, quiescence: true, weightsKey: 'legacy' },
 };
 
 // ============================================
@@ -453,35 +458,43 @@ const KNIGHT_DIST = (() => {
   return dist;
 })();
 
+const ALL_DIRECTIONS = [
+  { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
+  { dx: 0, dy: 1 }, { dx: 0, dy: -1 },
+  { dx: 1, dy: 1 }, { dx: 1, dy: -1 },
+  { dx: -1, dy: 1 }, { dx: -1, dy: -1 },
+];
+
+/** Convert a cell key like "e4" to a 0..63 square index matching KNIGHT_DIST */
+function cellKeyToSqIndex(cellKey) {
+  const { row, col } = getKeyCoordinates(cellKey);
+  return row * 8 + col;
+}
+
 /**
- * Estimate how close the opponent is to delivering the ball to our goal row.
- * Finds delivery squares (empty goal-row squares in the passing chain's lanes),
- * then uses precomputed knight distances to find the closest opponent piece.
+ * Enumerate "win points" / delivery squares for `color`: empty squares on
+ * `color`'s goal row that lie in a clear passing lane from any piece in
+ * `color`'s passing chain. These are the squares where `color` could
+ * deliver the ball and score.
  *
- * Returns minimum knight-move distance (0 = can score now, 99 = no path).
+ * Returns { squares: number[], chainPieces: Set<string> } where squares are
+ * 0..63 indices. Used by opponentDeliveryThreat (min knight distance) and by
+ * the win-point feature functions (count, reachability, opponent threat).
  */
-function opponentDeliveryThreat(board, color) {
-  const opponentColor = color === 'white' ? 'black' : 'white';
-  const oppBallHolder = findBallHolder(board, opponentColor);
-  if (!oppBallHolder) return 99;
+function getDeliverySquares(board, color) {
+  const ballHolder = findBallHolder(board, color);
+  if (!ballHolder) return { squares: [], chainPieces: new Set() };
 
-  const goalRow = color === 'white' ? 7 : 0;
+  // Goal row for `color` (where they score) — white scores on row 0, black on row 7.
+  const goalRow = color === 'white' ? 0 : 7;
 
-  const directions = [
-    { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
-    { dx: 0, dy: 1 }, { dx: 0, dy: -1 },
-    { dx: 1, dy: 1 }, { dx: 1, dy: -1 },
-    { dx: -1, dy: 1 }, { dx: -1, dy: -1 },
-  ];
-
-  // Get passing chain
-  const chainPieces = new Set([oppBallHolder.cellKey]);
-  let queue = [oppBallHolder.cellKey];
+  // BFS the passing chain
+  const chainPieces = new Set([ballHolder.cellKey]);
+  let queue = [ballHolder.cellKey];
   while (queue.length > 0) {
     const nextQueue = [];
     for (const cellKey of queue) {
-      const passes = getValidPasses(cellKey, opponentColor, board);
-      for (const pt of passes) {
+      for (const pt of getValidPasses(cellKey, color, board)) {
         if (!chainPieces.has(pt)) {
           chainPieces.add(pt);
           nextQueue.push(pt);
@@ -491,47 +504,55 @@ function opponentDeliveryThreat(board, color) {
     queue = nextQueue;
   }
 
-  // Find delivery squares: empty goal-row squares in chain pieces' passing lanes
-  const deliverySquareIndices = [];
+  // For each chain piece, cast rays in 8 directions; collect empty goal-row squares
+  // along clear lanes. Deduplicate via Set since multiple chain pieces can see
+  // the same delivery square.
+  const seen = new Set();
+  const squares = [];
   for (const cellKey of chainPieces) {
     const { row, col } = getKeyCoordinates(cellKey);
-    for (const { dx, dy } of directions) {
+    for (const { dx, dy } of ALL_DIRECTIONS) {
       let r = row + dy;
       let c = col + dx;
       while (r >= 0 && r < 8 && c >= 0 && c < 8) {
-        const target = board[toCellKey(r, c)];
-        if (target) break;
+        if (board[toCellKey(r, c)]) break;
         if (r === goalRow) {
-          deliverySquareIndices.push(r * 8 + c);
+          const sq = r * 8 + c;
+          if (!seen.has(sq)) { seen.add(sq); squares.push(sq); }
         }
         r += dy;
         c += dx;
       }
     }
   }
+  return { squares, chainPieces };
+}
 
+/**
+ * Estimate how close `color`'s opponent is to delivering the ball to `color`'s goal row.
+ * Returns minimum knight-move distance (0 = can score now, 99 = no path).
+ */
+function opponentDeliveryThreat(board, color) {
+  const opponentColor = color === 'white' ? 'black' : 'white';
+  const { squares: deliverySquareIndices, chainPieces } = getDeliverySquares(board, opponentColor);
   if (deliverySquareIndices.length === 0) return 99;
 
-  // Use precomputed knight distances — O(pieces * deliverySquares) lookups, no BFS
+  const oppGoalRow = opponentColor === 'white' ? 0 : 7;
   const oppPieces = findPieces(board, opponentColor).filter(p => !p.piece.hasBall);
   let minDist = 99;
 
   for (const { cellKey } of oppPieces) {
-    const col = cellKey.charCodeAt(0) - 97;
-    const sqRow = 8 - parseInt(cellKey.slice(1), 10);
-    const pieceSq = sqRow * 8 + col;
-
-    // Check if piece is already on goal row in the chain
+    const pieceSq = cellKeyToSqIndex(cellKey);
+    // Piece already on goal row and part of the chain → can deliver immediately
     const { row } = getKeyCoordinates(cellKey);
-    if (row === goalRow && chainPieces.has(cellKey)) return 0;
+    if (row === oppGoalRow && chainPieces.has(cellKey)) return 0;
 
     for (const dSq of deliverySquareIndices) {
       const d = KNIGHT_DIST[pieceSq][dSq];
       if (d < minDist) minDist = d;
-      if (minDist <= 1) return minDist; // can't get better than 0 or 1
+      if (minDist <= 1) return minDist;
     }
   }
-
   return minDist;
 }
 
@@ -651,6 +672,204 @@ function chokepointControl(board, color) {
     }
   }
   return count;
+}
+
+// ============================================
+// WIN POINTS — delivery-square enumeration
+// ============================================
+// "Win points" = empty squares on `color`'s goal row reachable via a clear
+// passing lane from any piece in `color`'s passing chain. The user's mental
+// model: when evaluating a position, what matters isn't the raw row of the
+// ball — it's how many viable delivery squares exist, how reachable they are
+// for our own pieces, and how easily the opponent can block them.
+
+/**
+ * Total count of viable delivery squares for `color`.
+ * Higher = more potential routes to score.
+ */
+function winPointCount(board, color, delivery) {
+  return (delivery || getDeliverySquares(board, color)).squares.length;
+}
+
+/**
+ * Of `color`'s delivery squares, how many have at least one of `color`'s own
+ * non-ball pieces within `maxKnightMoves` knight moves. A square is "reachable"
+ * when we have a piece that could occupy it within a small number of turns —
+ * this is what converts a theoretical win point into an actionable one.
+ *
+ * Default radius of 2 covers most "score within 1-2 turns" scenarios on an 8x8 board.
+ */
+function reachableWinPoints(board, color, maxKnightMoves = 2, delivery) {
+  const { squares } = delivery || getDeliverySquares(board, color);
+  if (squares.length === 0) return 0;
+
+  const ourPieceSqs = [];
+  for (const { cellKey, piece } of findPieces(board, color)) {
+    if (!piece.hasBall) ourPieceSqs.push(cellKeyToSqIndex(cellKey));
+  }
+  if (ourPieceSqs.length === 0) return 0;
+
+  let reachable = 0;
+  for (const dSq of squares) {
+    for (const pSq of ourPieceSqs) {
+      if (KNIGHT_DIST[pSq][dSq] <= maxKnightMoves) { reachable++; break; }
+    }
+  }
+  return reachable;
+}
+
+/**
+ * Of `color`'s delivery squares, how many have an opponent piece within
+ * `maxKnightMoves` knight moves — i.e., squares the opponent could move into
+ * to block `color`'s scoring lane. From `color`'s perspective these are
+ * "threatened" win points: they exist now but might not survive the opponent's
+ * next move.
+ *
+ * Default radius of 1 is intentionally tight: the opponent only gets one move
+ * before we move again, so a 1-knight-move blocker is the realistic threat.
+ */
+function defendedWinPoints(board, color, maxKnightMoves = 1, delivery) {
+  const { squares } = delivery || getDeliverySquares(board, color);
+  if (squares.length === 0) return 0;
+
+  const opponentColor = color === 'white' ? 'black' : 'white';
+  const oppPieceSqs = [];
+  for (const { cellKey, piece } of findPieces(board, opponentColor)) {
+    if (!piece.hasBall) oppPieceSqs.push(cellKeyToSqIndex(cellKey));
+  }
+  if (oppPieceSqs.length === 0) return 0;
+
+  let threatened = 0;
+  for (const dSq of squares) {
+    for (const pSq of oppPieceSqs) {
+      if (KNIGHT_DIST[pSq][dSq] <= maxKnightMoves) { threatened++; break; }
+    }
+  }
+  return threatened;
+}
+
+// ============================================
+// FLEXIBILITY / COORDINATION / DEFENSE
+// ============================================
+// Principle: the AI should play flexibly and stay cognizant of both sides'
+// threats rather than committing early to max-attack or max-defense. A piece's
+// value comes from WHAT KEY SQUARES IT CONNECTS TO, not from geometric
+// position. Example: a piece on rank 7 (one knight-move from multiple empty
+// endzone squares) is MORE valuable than a piece already on the 8th rank
+// (committed, no forward options).
+
+/**
+ * Per-piece connectivity to meaningful squares. Counts, for each of our
+ * non-ball pieces, the number of its 1-knight-move squares that are either
+ * our own delivery squares (offensive potential) or the opponent's delivery
+ * squares (blocking potential). Knight-distance 1 means "committable next
+ * turn" — distance-2 is intentionally excluded to keep the signal tight to
+ * actionable flexibility.
+ *
+ * A piece sitting ON a delivery square contributes 0 (it's committed and has
+ * no forward options), which is what we want — past-rank-7 commitment is not
+ * rewarded.
+ */
+function pieceCoordination(board, color, offWeight = 2, defWeight = 2, ourDeliveryRaw, oppDeliveryRaw) {
+  const ourDelivery = new Set((ourDeliveryRaw || getDeliverySquares(board, color)).squares);
+  const oppColor = color === 'white' ? 'black' : 'white';
+  const oppDelivery = new Set((oppDeliveryRaw || getDeliverySquares(board, oppColor)).squares);
+  if (ourDelivery.size === 0 && oppDelivery.size === 0) return 0;
+
+  let score = 0;
+  for (const { cellKey, piece } of findPieces(board, color)) {
+    if (piece.hasBall) continue;
+    const pSq = cellKeyToSqIndex(cellKey);
+    for (let sq = 0; sq < 64; sq++) {
+      if (KNIGHT_DIST[pSq][sq] !== 1) continue;
+      if (ourDelivery.has(sq)) score += offWeight;
+      if (oppDelivery.has(sq)) score += defWeight;
+    }
+  }
+  return score;
+}
+
+/**
+ * "Ready to defend" signal: count of our non-ball pieces within
+ * `maxKnightMoves` of ANY square on our goal rank. Continuous measure of
+ * defensive reserve strength — higher = more pieces that could rotate back
+ * to cover an opponent scoring threat.
+ *
+ * Our goal rank is the row where OPPONENT scores on us: row 7 for white,
+ * row 0 for black.
+ */
+function defensiveCoverOfGoalFiles(board, color, maxKnightMoves = 2) {
+  const ourGoalRow = color === 'white' ? 7 : 0;
+  const goalSqs = [];
+  for (let c = 0; c < 8; c++) goalSqs.push(ourGoalRow * 8 + c);
+
+  let cover = 0;
+  for (const { cellKey, piece } of findPieces(board, color)) {
+    if (piece.hasBall) continue;
+    const pSq = cellKeyToSqIndex(cellKey);
+    for (const gSq of goalSqs) {
+      if (KNIGHT_DIST[pSq][gSq] <= maxKnightMoves) { cover++; break; }
+    }
+  }
+  return cover;
+}
+
+/**
+ * Penultimate-rank forced-win motif detector. When our ball-carrier is on
+ * the penultimate rank AND there are empty adjacent-file squares on the goal
+ * rank that the opponent cannot all cover, we have (or are close to) a
+ * forced win. Passes from penultimate rank to goal rank cannot be blocked
+ * by an intervening piece (no intermediate square exists), so any endzone
+ * square reachable by one of our non-ball pieces in one knight-move wins.
+ *
+ * Returns the count of uncovered threatened goal-rank files, gated by
+ * whether we have a piece that can actually reach one (knight-dist ≤ 1).
+ * 0 = no motif or fully defended; 1+ = forced-win pressure.
+ */
+function penultimateRankForcedWin(board, color) {
+  const ball = findBallHolder(board, color);
+  if (!ball) return 0;
+  const penultRow = color === 'white' ? 1 : 6;
+  const { row, col } = getKeyCoordinates(ball.cellKey);
+  if (row !== penultRow) return 0;
+
+  const goalRow = color === 'white' ? 0 : 7;
+  const threatSqs = [];
+  for (const dc of [-1, 0, 1]) {
+    const c = col + dc;
+    if (c < 0 || c > 7) continue;
+    const cell = board[toCellKey(goalRow, c)];
+    if (cell === null || cell === undefined) threatSqs.push(goalRow * 8 + c);
+  }
+  if (threatSqs.length === 0) return 0;
+
+  const oppColor = color === 'white' ? 'black' : 'white';
+  const oppCovers = new Set();
+  for (const { cellKey, piece } of findPieces(board, oppColor)) {
+    if (piece.hasBall) continue;
+    const pSq = cellKeyToSqIndex(cellKey);
+    for (const tSq of threatSqs) {
+      if (KNIGHT_DIST[pSq][tSq] <= 1) oppCovers.add(tSq);
+    }
+  }
+  const uncovered = threatSqs.length - oppCovers.size;
+  if (uncovered <= 0) return 0;
+
+  // Gate: we need at least one of OUR non-ball pieces within knight-dist 1
+  // of an uncovered threat square, else the motif is theoretical not forced.
+  const ourUncoveredSqs = threatSqs.filter(tSq => !oppCovers.has(tSq));
+  let reachable = false;
+  for (const { cellKey, piece } of findPieces(board, color)) {
+    if (piece.hasBall) continue;
+    const pSq = cellKeyToSqIndex(cellKey);
+    for (const tSq of ourUncoveredSqs) {
+      if (KNIGHT_DIST[pSq][tSq] <= 1) { reachable = true; break; }
+    }
+    if (reachable) break;
+  }
+  if (!reachable) return 0;
+
+  return uncovered;
 }
 
 // ============================================
@@ -902,8 +1121,15 @@ function evaluateAdvanced(board, color) {
  * eval body so positive weights always mean "more of this is good for us".
  */
 const DEFAULT_IMPOSSIBLE_WEIGHTS = {
-  // Existing-style features (carried forward from advanced eval)
-  ballAdvancement: 100,
+  // Ball rank — kept at a reduced weight (vs legacy 100) as a continuous
+  // tempo signal. The win-points features below are the primary scoring-
+  // threat signal, but ball-row progress still matters as a tie-breaker
+  // between positions with equivalent delivery-lane geometry.
+  ballAdvancement: 30,
+  // pieceAdvancement: 8 (restored) — provides a continuous tempo signal that
+  // the coordination features didn't fully replace. Dojo round 3 regression
+  // (2-0 → 1-1 vs legacy) confirmed zeroing this hurts. The coordination
+  // features below complement it rather than replacing it.
   pieceAdvancement: 8,
   pieceAdvancementUnderThreat: 3,
   forwardPass: 25,
@@ -913,9 +1139,9 @@ const DEFAULT_IMPOSSIBLE_WEIGHTS = {
   ballIsolation1: -25,   // applied as bonus when total passes == 1
   chainFurthest: 60,
   chainReachesGoal: 150,
-  relayPieces: 20,
-  knightMobility: 3,
-  blockedLanes: 12,
+  relayPieces: 0,             // B-Rabbit cut: overlaps with chain/win-point features
+  knightMobility: 0,          // B-Rabbit cut: tiny weight, expensive O(pieces×64)
+  blockedLanes: 0,            // B-Rabbit cut: small weight, captured by deliveryThreat
   deliveryThreat0: 500,
   deliveryThreat1: 300,
   deliveryThreat2: 150,
@@ -928,10 +1154,73 @@ const DEFAULT_IMPOSSIBLE_WEIGHTS = {
   ourDeliveryThreat3: 50,
   // New impossible-mode features
   chainFragility: 25,         // their fragility - our fragility
-  networkConnectivity: 5,     // our connectivity - theirs (small per-link weight)
-  goalRowDefense: 40,         // our defenders - theirs
+  networkConnectivity: 0,     // B-Rabbit cut: tiny weight, expensive O(pieces²), redundant with coordination
+  goalRowDefense: 0,          // B-Rabbit cut: subsumed by defensiveCoverOfGoalFiles
   opponentIsolation: 35,      // their isolated pieces - ours
-  chokepointControl: 25,      // our chokepoint pieces - theirs
+  chokepointControl: 0,       // B-Rabbit cut: overlaps with blockedLanes + defensive features
+  // Win-points features (replacement for ballAdvancement). Each is an
+  // (us - them) delta, scaled per delivery-square unit. Initial guesses:
+  //   - winPointCount: ~similar magnitude to old chainReachesGoal so 1 win
+  //     point gives meaningful but not overwhelming signal
+  //   - reachableWinPoints: stronger than count — a reachable square is a
+  //     near-term scoring threat
+  //   - defendedWinPoints: defensive — we want THEIR win points threatened
+  //     by us and OURS not threatened by them (sign handled in eval body)
+  winPointCount: 80,
+  reachableWinPoints: 150,
+  defendedWinPoints: 50,
+  // Flexibility/coordination/defense features — the trio added to fix the
+  // "impossible overcommits and misses forced-win threats" regression.
+  //   - pieceCoordination: per-connection signal (typical game: 10-30 total
+  //     connections per side), so weight is per-link not per-piece
+  //   - defensiveCoverOfGoalFiles: continuous "ready-to-defend" reserve count
+  //   - penultimateRankForcedWin: step-function spike when the specific
+  //     forced-win motif is present; weight is high to dominate other terms
+  //     when the motif exists, since any other positional consideration is
+  //     moot if we can force a win next turn
+  pieceCoordination: 15,
+  defensiveCoverOfGoalFiles: 30,
+  penultimateRankForcedWin: 400,
+};
+
+/**
+ * Pre-change weights for A/B benchmarking (used by the "impossible_legacy"
+ * difficulty config). Mirrors the eval defaults that shipped before win-points
+ * features were added: ballAdvancement: 100, no win-points contribution.
+ */
+/**
+ * "Tortuga" weights — full-featured eval, all 22 features active.
+ * Restores the 6 features B-Rabbit zeroed for speed.
+ */
+const TORTUGA_IMPOSSIBLE_WEIGHTS = {
+  ...DEFAULT_IMPOSSIBLE_WEIGHTS,
+  relayPieces: 20,
+  knightMobility: 3,
+  blockedLanes: 12,
+  networkConnectivity: 5,
+  goalRowDefense: 40,
+  chokepointControl: 25,
+};
+
+/**
+ * "Legacy" weights — pre-win-points eval. ballAdvancement: 100, no new features.
+ */
+const LEGACY_IMPOSSIBLE_WEIGHTS = {
+  ...DEFAULT_IMPOSSIBLE_WEIGHTS,
+  ballAdvancement: 100,
+  pieceAdvancement: 8,
+  relayPieces: 20,
+  knightMobility: 3,
+  blockedLanes: 12,
+  networkConnectivity: 5,
+  goalRowDefense: 40,
+  chokepointControl: 25,
+  winPointCount: 0,
+  reachableWinPoints: 0,
+  defendedWinPoints: 0,
+  pieceCoordination: 0,
+  defensiveCoverOfGoalFiles: 0,
+  penultimateRankForcedWin: 0,
 };
 
 /**
@@ -998,16 +1287,27 @@ function evaluateImpossible(board, color, weights = DEFAULT_IMPOSSIBLE_WEIGHTS) 
   score += countBlockedLanes(board, color) * weights.blockedLanes;
   score -= countBlockedLanes(board, opponentColor) * weights.blockedLanes;
 
-  // --- Piece advancement (scaled down when opponent ball is advanced) ---
+  // --- Piece advancement (concave: peaks at penultimate rank, drops on goal row) ---
+  // A piece on rank 7 (progress=6) has maximum flexibility: it can jump to
+  // multiple endzone squares next turn. A piece already on the goal row
+  // (progress=7) is committed — fewer options, lower value. This encodes
+  // the "7th rank > 8th rank" flexibility principle.
+  //
+  // Concave curve: 0,1,2,3,4,5,6,4 — peak at progress 6 (penultimate),
+  // drops to 4 at progress 7 (goal row). Under-threat scaling still applies.
   const oppBallAdv = opponentBallHolder
     ? getAdvancement(getKeyCoordinates(opponentBallHolder.cellKey).row, opponentColor)
     : 0;
   const advWeight = oppBallAdv >= 4 ? weights.pieceAdvancementUnderThreat : weights.pieceAdvancement;
   for (const { cellKey } of findPieces(board, color)) {
-    score += getAdvancement(getKeyCoordinates(cellKey).row, color) * advWeight;
+    const progress = getAdvancement(getKeyCoordinates(cellKey).row, color);
+    const concave = progress <= 6 ? progress : 4;  // 7→4 (goal row drop-off)
+    score += concave * advWeight;
   }
   for (const { cellKey } of findPieces(board, opponentColor)) {
-    score -= getAdvancement(getKeyCoordinates(cellKey).row, opponentColor) * advWeight;
+    const progress = getAdvancement(getKeyCoordinates(cellKey).row, opponentColor);
+    const concave = progress <= 6 ? progress : 4;
+    score -= concave * advWeight;
   }
 
   // --- Delivery threat (symmetric) ---
@@ -1032,17 +1332,44 @@ function evaluateImpossible(board, color, weights = DEFAULT_IMPOSSIBLE_WEIGHTS) 
   score += (opponentIsolation(board, color) - opponentIsolation(board, opponentColor)) * weights.opponentIsolation;
   score += (chokepointControl(board, color) - chokepointControl(board, opponentColor)) * weights.chokepointControl;
 
+  // --- Win-points + flexibility features ---
+  // Cache delivery squares: computed once per color, reused by winPointCount,
+  // reachableWinPoints, defendedWinPoints, and pieceCoordination. This cuts
+  // ~10 redundant BFS+raycast calls down to 2 per eval invocation.
+  const needsDelivery = weights.winPointCount || weights.reachableWinPoints
+    || weights.defendedWinPoints || weights.pieceCoordination;
+  const ourDelivery = needsDelivery ? getDeliverySquares(board, color) : null;
+  const oppDelivery = needsDelivery ? getDeliverySquares(board, opponentColor) : null;
+
+  if (weights.winPointCount || weights.reachableWinPoints || weights.defendedWinPoints) {
+    score += (winPointCount(board, color, ourDelivery) - winPointCount(board, opponentColor, oppDelivery)) * weights.winPointCount;
+    score += (reachableWinPoints(board, color, 2, ourDelivery) - reachableWinPoints(board, opponentColor, 2, oppDelivery)) * weights.reachableWinPoints;
+    // defendedWinPoints: we want THEIR win points threatened (good) and OURS
+    // not threatened (bad). Sign: theirs - ours gives positive when we're
+    // threatening more of their squares than they are of ours.
+    score += (defendedWinPoints(board, opponentColor, 1, oppDelivery) - defendedWinPoints(board, color, 1, ourDelivery)) * weights.defendedWinPoints;
+  }
+
+  // --- Flexibility / coordination / defense features ---
+  if (weights.pieceCoordination || weights.defensiveCoverOfGoalFiles || weights.penultimateRankForcedWin) {
+    score += (pieceCoordination(board, color, 2, 2, ourDelivery, oppDelivery) - pieceCoordination(board, opponentColor, 2, 2, oppDelivery, ourDelivery)) * weights.pieceCoordination;
+    score += (defensiveCoverOfGoalFiles(board, color) - defensiveCoverOfGoalFiles(board, opponentColor)) * weights.defensiveCoverOfGoalFiles;
+    // penultimateRankForcedWin is sign-symmetric: our motif is good, theirs is bad.
+    score += (penultimateRankForcedWin(board, color) - penultimateRankForcedWin(board, opponentColor)) * weights.penultimateRankForcedWin;
+  }
+
   return score;
 }
 
 /**
- * Dispatch to appropriate eval function based on type
+ * Dispatch to appropriate eval function based on type.
+ * `weights` only applies to the impossible eval (others are not parameterized).
  */
-function evaluatePosition(board, color, evalType = 'standard') {
+function evaluatePosition(board, color, evalType = 'standard', weights) {
   switch (evalType) {
     case 'simple': return evaluateSimple(board, color);
     case 'advanced': return evaluateAdvanced(board, color);
-    case 'impossible': return evaluateImpossible(board, color);
+    case 'impossible': return evaluateImpossible(board, color, weights);
     default: return evaluateStandard(board, color);
   }
 }
@@ -1152,7 +1479,7 @@ function minimax(board, depth, alpha, beta, isMaximizing, aiColor, currentTurn, 
       }
     }
     return {
-      score: evaluatePosition(board, aiColor, evalType),
+      score: evaluatePosition(board, aiColor, evalType, searchState && searchState.weights),
       moves: [],
     };
   }
@@ -1342,6 +1669,10 @@ function makeAIMove(game, difficulty = 'medium') {
   // Fresh transposition table per move
   const ttable = new Map();
 
+  // Resolve weights override (impossible-mode A/B variants only).
+  const WEIGHTS_MAP = { legacy: LEGACY_IMPOSSIBLE_WEIGHTS, tortuga: TORTUGA_IMPOSSIBLE_WEIGHTS };
+  const weights = WEIGHTS_MAP[config.weightsKey] || undefined;
+
   // Time-budgeted iterative deepening + search enhancements (impossible mode only).
   // For other modes, searchState is undefined and there's zero overhead.
   const useEnhancements = config.timeLimitMs || config.pvs || config.lmr || config.quiescence;
@@ -1352,6 +1683,7 @@ function makeAIMove(game, difficulty = 'medium') {
     pvs: !!config.pvs,
     lmr: !!config.lmr,
     quiescence: !!config.quiescence,
+    weights,
   } : null;
 
   // Iterative deepening minimax for all difficulty levels.
@@ -1488,4 +1820,14 @@ module.exports = {
   classifyPasses,
   countBlockedLanes,
   countRelayPieces,
+  getDeliverySquares,
+  winPointCount,
+  reachableWinPoints,
+  defendedWinPoints,
+  pieceCoordination,
+  defensiveCoverOfGoalFiles,
+  penultimateRankForcedWin,
+  DEFAULT_IMPOSSIBLE_WEIGHTS,
+  TORTUGA_IMPOSSIBLE_WEIGHTS,
+  LEGACY_IMPOSSIBLE_WEIGHTS,
 };
