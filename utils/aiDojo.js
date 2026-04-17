@@ -64,14 +64,42 @@ function runMatchup(diff1, diff2, numGames = 10) {
 
 console.log('=== AI DOJO ===\n');
 
-console.log('--- Easy vs Medium ---');
-runMatchup('easy', 'medium', 10);
+// Allow filtering to a specific section via CLI arg, e.g.:
+//   node utils/aiDojo.js winpoints
+//   node utils/aiDojo.js topdogs
+const section = process.argv[2];
 
-console.log('--- Medium vs Hard ---');
-runMatchup('medium', 'hard', 10);
+if (!section || section === 'tiers') {
+  console.log('--- Easy vs Medium ---');
+  runMatchup('easy', 'medium', 10);
 
-console.log('--- Easy vs Hard ---');
-runMatchup('easy', 'hard', 10);
+  console.log('--- Medium vs Hard ---');
+  runMatchup('medium', 'hard', 10);
 
-console.log('--- Hard vs Impossible ---');
-runMatchup('hard', 'impossible', 6);
+  console.log('--- Easy vs Hard ---');
+  runMatchup('easy', 'hard', 10);
+}
+
+if (!section || section === 'topdogs') {
+  // All deterministic (topN: 1). 2 games (alternating colors) = full info set.
+  console.log('--- Hard vs B-Rabbit (lean) ---');
+  runMatchup('hard', 'impossible', 2);
+
+  console.log('--- Hard vs Tortuga (full) ---');
+  runMatchup('hard', 'impossible_tortuga', 2);
+
+  console.log('--- Hard vs Legacy ---');
+  runMatchup('hard', 'impossible_legacy', 2);
+}
+
+if (!section || section === 'triangle') {
+  // Round-robin between the three impossible variants.
+  console.log('--- B-Rabbit vs Tortuga ---');
+  runMatchup('impossible', 'impossible_tortuga', 2);
+
+  console.log('--- B-Rabbit vs Legacy ---');
+  runMatchup('impossible', 'impossible_legacy', 2);
+
+  console.log('--- Tortuga vs Legacy ---');
+  runMatchup('impossible_tortuga', 'impossible_legacy', 2);
+}

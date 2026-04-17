@@ -1,7 +1,10 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert');
 const { initializeBoardStatus } = require('../utils/gameInitialization');
-const { makeAIMove, minimax, generateTurnOutcomes, AI_CONFIG, DIFFICULTY_CONFIGS } = require('../utils/aiLogic');
+const {
+  makeAIMove, minimax, generateTurnOutcomes, AI_CONFIG, DIFFICULTY_CONFIGS,
+  getDeliverySquares, winPointCount, reachableWinPoints, defendedWinPoints,
+} = require('../utils/aiLogic');
 const { passBall, movePiece, cloneBoard } = require('../utils/gameLogic');
 
 // ============================================
@@ -204,8 +207,8 @@ describe('Impossible mode', () => {
     assert.ok(result.currentBoardStatus, 'should have a board');
     assert.strictEqual(result.turnNumber, 1);
     assert.ok(result.moveHistory.length > 0, 'should record move history');
-    // Budget is 4000ms; allow 2s of slack for the time check granularity
-    assert.ok(elapsed < 6000, `should respect time budget (took ${elapsed}ms)`);
+    // Budget is 6000ms; allow 2s of slack for the time check granularity
+    assert.ok(elapsed < 8000, `should respect time budget (took ${elapsed}ms)`);
   });
 
   it('should produce a 64-cell board (not sparse)', () => {
@@ -276,6 +279,91 @@ describe('Impossible mode', () => {
       pvsResult.score, plainResult.score,
       'PVS and plain alpha-beta should agree on the minimax score at the same depth'
     );
+  });
+});
+
+describe('Win-points features', () => {
+  it('getDeliverySquares: ball holder with one clear lane to goal row gives one delivery square', () => {
+    // White ball on e6, e7 and e8 are empty → e6's straight-up lane reaches goal row e8.
+    // No teammates so chain is just e6.
+    const board = buildBoard([
+      { key: 'e6', color: 'white', hasBall: true },
+      { key: 'a1', color: 'white', hasBall: false },
+      { key: 'h1', color: 'white', hasBall: false },
+      { key: 'b2', color: 'white', hasBall: false },
+      { key: 'a8', color: 'black', hasBall: true },
+      { key: 'h8', color: 'black', hasBall: false },
+      { key: 'b8', color: 'black', hasBall: false },
+      { key: 'g8', color: 'black', hasBall: false },
+    ]);
+
+    const { squares } = getDeliverySquares(board, 'white');
+    // White's goal row is row 0 (rank 8). e8 = row 0, col 4 → sq index 4.
+    assert.ok(squares.includes(4), 'should include e8 as a delivery square');
+    assert.strictEqual(winPointCount(board, 'white'), squares.length);
+  });
+
+  it('winPointCount: chain extends delivery reach to remote files', () => {
+    // White ball on b2. b2 can pass east along rank 2 to ... no friendly there.
+    // But a1 (white) is reachable diagonally from b2; from a1 we can reach h1
+    // via the empty rank-1 lane. h1's straight-up lane is clear all the way to
+    // h8, opening h8 as a delivery square that b2 alone could never reach.
+    // This is the whole point of the win-points feature — chain reach matters,
+    // not just the ball holder's local lanes.
+    const board = buildBoard([
+      { key: 'b2', color: 'white', hasBall: true },
+      { key: 'a1', color: 'white', hasBall: false },
+      { key: 'h1', color: 'white', hasBall: false },
+      { key: 'd4', color: 'white', hasBall: false },
+      { key: 'a8', color: 'black', hasBall: true },
+      { key: 'd5', color: 'black', hasBall: false },
+      { key: 'e5', color: 'black', hasBall: false },
+      { key: 'c5', color: 'black', hasBall: false },
+    ]);
+    const { squares } = getDeliverySquares(board, 'white');
+    // h8 = row 0, col 7 → sq index 7. Reached via b2 → a1 → h1 → h8 lane.
+    assert.ok(squares.includes(7), `chain should expose h8 as a delivery square; got squares=${squares}`);
+    assert.ok(winPointCount(board, 'white') >= 2, 'chain should expose multiple win points');
+  });
+
+  it('reachableWinPoints: counts squares with own non-ball piece within 2 knight moves', () => {
+    // White ball on e6 with clear lane to e8 (delivery square sq=4).
+    // White piece at f6 → knight distance from f6 to e8 = 1 (f6 → e8 is a -2,+1 knight jump? let's check)
+    // f6 = row 2, col 5. e8 = row 0, col 4. Δrow = -2, Δcol = -1 → valid knight move, dist=1. ✓
+    const board = buildBoard([
+      { key: 'e6', color: 'white', hasBall: true },
+      { key: 'f6', color: 'white', hasBall: false },
+      { key: 'a1', color: 'white', hasBall: false },
+      { key: 'h1', color: 'white', hasBall: false },
+      { key: 'a8', color: 'black', hasBall: true },
+      { key: 'b8', color: 'black', hasBall: false },
+      { key: 'g8', color: 'black', hasBall: false },
+      { key: 'h7', color: 'black', hasBall: false },
+    ]);
+
+    const total = winPointCount(board, 'white');
+    const reachable = reachableWinPoints(board, 'white', 2);
+    assert.ok(total > 0, 'should have at least one win point');
+    assert.ok(reachable >= 1, 'f6 should be within 2 knight moves of at least one delivery square');
+    assert.ok(reachable <= total, 'reachable cannot exceed total');
+  });
+
+  it('defendedWinPoints: counts win points an opponent piece can reach in 1 knight move', () => {
+    // White ball on e6 → e8 is a delivery square.
+    // Black piece at f6 = 1 knight move from e8 → e8 is "defended"/threatened by black.
+    const board = buildBoard([
+      { key: 'e6', color: 'white', hasBall: true },
+      { key: 'a1', color: 'white', hasBall: false },
+      { key: 'h1', color: 'white', hasBall: false },
+      { key: 'b2', color: 'white', hasBall: false },
+      { key: 'a8', color: 'black', hasBall: true },
+      { key: 'f6', color: 'black', hasBall: false },
+      { key: 'h8', color: 'black', hasBall: false },
+      { key: 'h7', color: 'black', hasBall: false },
+    ]);
+
+    const defended = defendedWinPoints(board, 'white', 1);
+    assert.ok(defended >= 1, 'black piece at f6 should threaten e8 delivery square');
   });
 });
 
