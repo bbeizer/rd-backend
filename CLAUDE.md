@@ -80,6 +80,7 @@ The AI lives in `utils/aiLogic.js` — minimax with alpha-beta pruning, iterativ
 
 **Key files:**
 - `utils/aiLogic.js` — minimax, difficulty configs, `makeAIMove` entry point; delegates impossible eval to `aiImpossibleEval.js`
+- `utils/aiSparseBoard.js` — AI search sparse board: `cloneBoardFast`, `movePiece`/`passBall`, `expandBoard`, `hashBoard` (TT)
 - `utils/aiEvalCore.js` — shared static-eval helpers (`didWin`, passing-chain metrics, delivery squares / threat) used by easy–impossible evals
 - `utils/aiImpossibleEval.js` — `DEFAULT_IMPOSSIBLE_WEIGHTS` (B-Rabbit), Tortuga/Legacy, `evaluateImpossible`, `computeImpossibleFeatureContributions` (per-key gating for cost), Phase C-lite `atomic*` keys (default 0)
 - `utils/aiDojo.js` — bot-vs-bot matchup runner for validating difficulty tuning

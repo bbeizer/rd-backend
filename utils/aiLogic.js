@@ -9,9 +9,15 @@ const {
   getPieceMoves,
   getValidPasses,
   cloneBoard,
-  movePiece: movePieceBase,
-  passBall: passBallBase,
 } = require('./gameLogic');
+
+const {
+  cloneBoardFast,
+  movePiece,
+  passBall,
+  expandBoard,
+  hashBoard,
+} = require('./aiSparseBoard');
 
 const {
   EVAL_INFINITY,
@@ -44,60 +50,7 @@ const {
   penultimateRankForcedWin,
 } = require('./aiImpossibleEval');
 
-// ============================================
-// AI-OPTIMIZED BOARD OPERATIONS
-// ============================================
-// These skip Mongoose document handling and use sparse boards
-// (only occupied cells stored) for faster iteration in the search tree.
-
-/**
- * Fast board clone — plain objects only, sparse (skips null cells).
- * With 8 pieces this copies ~8 entries instead of 64.
- */
-function cloneBoardFast(board) {
-  const cloned = {};
-  for (const key of Object.keys(board)) {
-    const p = board[key];
-    if (p) cloned[key] = { color: p.color, hasBall: p.hasBall, position: p.position, id: p.id };
-  }
-  return cloned;
-}
-
-/** Move piece using fast sparse clone */
-function movePiece(sourceKey, targetKey, board) {
-  const newBoard = cloneBoardFast(board);
-  const piece = newBoard[sourceKey];
-  if (piece) {
-    newBoard[targetKey] = { color: piece.color, hasBall: piece.hasBall, position: targetKey, id: piece.id };
-    delete newBoard[sourceKey];
-  }
-  return newBoard;
-}
-
-/** Pass ball using fast sparse clone */
-function passBall(sourceKey, targetKey, board) {
-  const newBoard = cloneBoardFast(board);
-  const src = newBoard[sourceKey];
-  const tgt = newBoard[targetKey];
-  if (src && tgt) {
-    newBoard[sourceKey] = { color: src.color, hasBall: false, position: src.position, id: src.id };
-    newBoard[targetKey] = { color: tgt.color, hasBall: true, position: tgt.position, id: tgt.id };
-  }
-  return newBoard;
-}
-
-/** Expand sparse board back to full 64-cell format for the frontend */
-function expandBoard(board) {
-  const full = {};
-  for (let r = 0; r < 8; r++) {
-    for (let c = 0; c < 8; c++) {
-      const key = toCellKey(r, c);
-      const p = board[key];
-      full[key] = p ? { color: p.color, hasBall: p.hasBall, position: p.position, id: p.id } : null;
-    }
-  }
-  return full;
-}
+// Sparse board I/O: utils/aiSparseBoard.js
 
 // ============================================
 // CONFIGURATION
@@ -118,25 +71,6 @@ const DIFFICULTY_CONFIGS = {
   // "Legacy" — pre-win-points weights. Benchmarking only.
   impossible_legacy: { depth: 8, evalFn: 'impossible', topN: 1, timeLimitMs: 4000, pvs: true, lmr: true, quiescence: true, weightsKey: 'legacy' },
 };
-
-// ============================================
-// BOARD HASHING (for transposition table)
-// ============================================
-
-// Collision-free string hash: sorted list of piece descriptors.
-// e.g. "B*e8Bc8Bd8Bf8W*d1Wc1We1Wf1"
-// With only 8 pieces this is fast and gives a perfect 1:1 mapping.
-function hashBoard(board) {
-  const parts = [];
-  for (const cellKey of Object.keys(board)) {
-    const piece = board[cellKey];
-    if (piece) {
-      parts.push((piece.color === 'white' ? 'W' : 'B') + (piece.hasBall ? '*' : '') + cellKey);
-    }
-  }
-  parts.sort();
-  return parts.join('');
-}
 
 // ============================================
 // MOVE GENERATION
