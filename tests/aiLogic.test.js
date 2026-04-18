@@ -280,6 +280,44 @@ describe('Impossible mode', () => {
       'PVS and plain alpha-beta should agree on the minimax score at the same depth'
     );
   });
+
+  // PVS/LMR full-window and reduced re-searches must pass `noExtend` through.
+  // If it is dropped (undefined), `!noExtend` is true at depth-0 leaves and
+  // quiescence can extend again inside an already-extended subtree.
+  it('quiescence extend count stable with PVS+LMR (noExtend propagation regression)', () => {
+    const board = buildBoard([
+      { key: 'd5', color: 'white', hasBall: true },
+      { key: 'c4', color: 'white', hasBall: false },
+      { key: 'e4', color: 'white', hasBall: false },
+      { key: 'a1', color: 'white', hasBall: false },
+      { key: 'd4', color: 'black', hasBall: true },
+      { key: 'c5', color: 'black', hasBall: false },
+      { key: 'e5', color: 'black', hasBall: false },
+      { key: 'h8', color: 'black', hasBall: false },
+    ]);
+
+    const searchState = {
+      deadline: Infinity,
+      nodesSearched: 0,
+      timeUp: false,
+      pvs: true,
+      lmr: true,
+      quiescence: true,
+      _testQuiescenceExtends: 0,
+    };
+
+    const result = minimax(
+      board, 3, -Infinity, Infinity,
+      true, 'white', 'white', 'simple', new Map(), searchState
+    );
+
+    assert.strictEqual(
+      searchState._testQuiescenceExtends,
+      170,
+      'expected quiescence extension count for this board at depth 3 with simple eval'
+    );
+    assert.strictEqual(result.score, 180);
+  });
 });
 
 describe('Win-points features', () => {
