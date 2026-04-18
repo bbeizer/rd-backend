@@ -1472,9 +1472,6 @@ function minimax(board, depth, alpha, beta, isMaximizing, aiColor, currentTurn, 
     if (searchState && searchState.quiescence && !noExtend) {
       const oppThreat = opponentDeliveryThreat(board, aiColor);
       if (oppThreat <= 1) {
-        if (typeof searchState._testQuiescenceExtends === 'number') {
-          searchState._testQuiescenceExtends += 1;
-        }
         return minimax(
           board, 1, alpha, beta,
           isMaximizing, aiColor, currentTurn, evalType, ttable, searchState, true
@@ -1547,14 +1544,14 @@ function minimax(board, depth, alpha, beta, isMaximizing, aiColor, currentTurn, 
         if (!result.aborted && reduced && result.score > alpha) {
           result = minimax(
             outcome.board, depth - 1, alpha, alpha + 1,
-            false, aiColor, nextTurn, evalType, ttable, searchState, noExtend
+            false, aiColor, nextTurn, evalType, ttable, searchState
           );
         }
         // Null window failed high — re-search at full window
         if (!result.aborted && result.score > alpha && result.score < beta) {
           result = minimax(
             outcome.board, depth - 1, alpha, beta,
-            false, aiColor, nextTurn, evalType, ttable, searchState, noExtend
+            false, aiColor, nextTurn, evalType, ttable, searchState
           );
         }
       } else {
@@ -1610,13 +1607,13 @@ function minimax(board, depth, alpha, beta, isMaximizing, aiColor, currentTurn, 
         if (!result.aborted && reduced && result.score < beta) {
           result = minimax(
             outcome.board, depth - 1, beta - 1, beta,
-            true, aiColor, nextTurn, evalType, ttable, searchState, noExtend
+            true, aiColor, nextTurn, evalType, ttable, searchState
           );
         }
         if (!result.aborted && result.score < beta && result.score > alpha) {
           result = minimax(
             outcome.board, depth - 1, alpha, beta,
-            true, aiColor, nextTurn, evalType, ttable, searchState, noExtend
+            true, aiColor, nextTurn, evalType, ttable, searchState
           );
         }
       } else {
