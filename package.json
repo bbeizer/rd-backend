@@ -18,6 +18,9 @@
     "url": "https://github.com/bbeizer/rd-backend/issues"
   },
   "homepage": "https://github.com/bbeizer/rd-backend#readme",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "dependencies": {
     "bcrypt": "^5.1.1",
     "bcryptjs": "^2.4.3",
