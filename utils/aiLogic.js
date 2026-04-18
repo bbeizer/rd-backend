@@ -1798,6 +1798,7 @@ function makeAIMove(game, difficulty = 'medium') {
     ballPassTo: null,
     ballPassChain: [],
     turnActionStates: [],
+    _aiMeta: { rootScore: result.score, depth: config.depth, difficulty },
   };
 
   if (winner) {
