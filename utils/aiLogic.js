@@ -33,6 +33,7 @@ const {
   opponentDeliveryThreat,
   cellKeyToSqIndex,
 } = require('./aiEvalCore');
+const { persistLookup, persistWrite, persistKey } = require('./aiPersistTT');
 
 const {
   DEFAULT_IMPOSSIBLE_WEIGHTS,
@@ -66,9 +67,9 @@ const AI_CONFIG = {
 };
 
 const DIFFICULTY_CONFIGS = {
-  easy:       { depth: 1, evalFn: 'simple',     topN: 3 },
-  medium:     { depth: 3, evalFn: 'standard',   topN: 2 },
-  hard:       { depth: 4, evalFn: 'advanced',   topN: 1 },
+  easy: { depth: 1, evalFn: 'simple', topN: 3 },
+  medium: { depth: 3, evalFn: 'standard', topN: 2 },
+  hard: { depth: 4, evalFn: 'advanced', topN: 1 },
   // "B-Rabbit" — lean eval, 6 low-value features zeroed for speed.
   impossible: { depth: 8, evalFn: 'impossible', topN: 1, timeLimitMs: 6000, pvs: true, lmr: true, quiescence: true },
   // "Tortuga" — full-featured eval, all features active. Benchmarking only.
@@ -231,8 +232,8 @@ function orderOutcomes(outcomes, color, isMaximizing, ttHintMoves) {
     const hint = ttHintMoves[0];
     for (const outcome of outcomes) {
       if (outcome.moves.length > 0 &&
-          outcome.moves[0].from === hint.from &&
-          outcome.moves[0].to === hint.to) {
+        outcome.moves[0].from === hint.from &&
+        outcome.moves[0].to === hint.to) {
         outcome._qs = isMaximizing ? AI_CONFIG.INFINITY + 1 : -AI_CONFIG.INFINITY - 1;
         break;
       }
@@ -304,6 +305,24 @@ function minimax(board, depth, alpha, beta, isMaximizing, aiColor, currentTurn, 
 
   // Transposition table lookup
   const boardHash = hashBoard(board);
+
+  // Persisted proven-result lookup. Returns only when a prior search proved the
+  // outcome at this position; trumps the in-memory TT since it's ground truth.
+  // Score bubbles up through minimax verbatim, so we preserve the "prefer faster
+  // mates" convention by padding with the current depth (same as terminal nodes).
+  {
+    const proven = persistLookup(boardHash, currentTurn);
+    if (proven) {
+      const sideToMoveIsAi = currentTurn === aiColor;
+      const sideToMoveWins = proven.result === 'WIN';
+      const aiWins = sideToMoveIsAi === sideToMoveWins;
+      return {
+        score: aiWins ? AI_CONFIG.INFINITY + depth : -AI_CONFIG.INFINITY - depth,
+        moves: proven.bestMove ? [proven.bestMove] : [],
+      };
+    }
+  }
+
   // Encode turn info into the key to distinguish same board with different turn
   const ttKey = boardHash + (isMaximizing ? '|MAX' : '|MIN');
   const cached = ttable.get(ttKey);
@@ -626,6 +645,24 @@ function makeAIMove(game, difficulty = 'medium', opts = {}) {
   if (winner) {
     newGame.status = 'completed';
     newGame.winner = winner === 'white' ? game.whitePlayerName : game.blackPlayerName;
+  }
+
+  // Persist root-level proofs back to the shared store. Only ±INFINITY scores
+  // count as proven; heuristic results are not cached across games. Write keyed
+  // on the pre-move position (hash + side-to-move = aiColor at the root).
+  const INF_THRESHOLD = AI_CONFIG.INFINITY - 100;
+  if (Math.abs(result.score) >= INF_THRESHOLD) {
+    const rootHash = hashBoard(cloneBoardFast(cloneBoard(game.currentBoardStatus)));
+    // Rough plies-to-terminal from the score (terminal returns INF+remainingDepth).
+    const excess = Math.abs(result.score) - AI_CONFIG.INFINITY;
+    const distance = Math.max(1, lastCompletedDepth - excess);
+    persistWrite({
+      hash: persistKey(rootHash, aiColor),
+      result: result.score > 0 ? 'WIN' : 'LOSS',
+      distance,
+      bestMove: bestMoves && bestMoves.length > 0 ? bestMoves[0] : null,
+      source: 'search',
+    });
   }
 
   return newGame;
