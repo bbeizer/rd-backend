@@ -14,14 +14,27 @@
 
 const { openStore } = require('./aiPositionStore');
 
-const READ_ENABLED = process.env.PERSIST_TT_READ === '1';
-const WRITE_ENABLED = process.env.PERSIST_TT_WRITE === '1';
+// Flags are read at call time (not at require time) so tests can toggle them
+// with process.env.PERSIST_TT_* mid-run, and so a deploy can flip writes off
+// via a simple env change + process signal.
+function readEnabled() { return process.env.PERSIST_TT_READ === '1'; }
+function writeEnabled() { return process.env.PERSIST_TT_WRITE === '1'; }
 
 let storeInstance = null;
+let storeInstancePath = null;
 
 function getStore() {
-  if (!READ_ENABLED && !WRITE_ENABLED) return null;
-  if (!storeInstance) storeInstance = openStore();
+  if (!readEnabled() && !writeEnabled()) return null;
+  // Allow tests to point at a different DB (e.g. a tmp file) via env.
+  const desiredPath = process.env.PERSIST_TT_DB || null;
+  if (storeInstance && desiredPath !== storeInstancePath) {
+    storeInstance.close();
+    storeInstance = null;
+  }
+  if (!storeInstance) {
+    storeInstance = desiredPath ? openStore(desiredPath) : openStore();
+    storeInstancePath = desiredPath;
+  }
   return storeInstance;
 }
 
@@ -31,14 +44,14 @@ function persistKey(boardHash, sideToMove) {
 }
 
 function persistLookup(boardHash, sideToMove) {
-  if (!READ_ENABLED) return null;
+  if (!readEnabled()) return null;
   const store = getStore();
   if (!store) return null;
   return store.get(persistKey(boardHash, sideToMove));
 }
 
 function persistWrite(entry) {
-  if (!WRITE_ENABLED) return;
+  if (!writeEnabled()) return;
   const store = getStore();
   if (!store) return;
   try {
@@ -53,6 +66,7 @@ function closeStore() {
   if (storeInstance) {
     storeInstance.close();
     storeInstance = null;
+    storeInstancePath = null;
   }
 }
 
@@ -61,6 +75,6 @@ module.exports = {
   persistWrite,
   persistKey,
   closeStore,
-  READ_ENABLED,
-  WRITE_ENABLED,
+  readEnabled,
+  writeEnabled,
 };

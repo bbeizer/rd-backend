@@ -33,6 +33,7 @@ const {
   opponentDeliveryThreat,
   cellKeyToSqIndex,
 } = require('./aiEvalCore');
+const { persistLookup, persistWrite, persistKey } = require('./aiPersistTT');
 
 const {
   DEFAULT_IMPOSSIBLE_WEIGHTS,
@@ -309,7 +310,7 @@ function minimax(board, depth, alpha, beta, isMaximizing, aiColor, currentTurn, 
   // outcome at this position; trumps the in-memory TT since it's ground truth.
   // Score bubbles up through minimax verbatim, so we preserve the "prefer faster
   // mates" convention by padding with the current depth (same as terminal nodes).
-  if (PERSIST_READ) {
+  {
     const proven = persistLookup(boardHash, currentTurn);
     if (proven) {
       const sideToMoveIsAi = currentTurn === aiColor;
