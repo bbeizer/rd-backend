@@ -17,7 +17,7 @@ const {
   expandBoard,
   hashBoard,
 } = require('./aiSparseBoard');
-const { persistLookup, persistWrite, persistKey, READ_ENABLED: PERSIST_READ } = require('./aiPersistTT');
+
 const {
   EVAL_INFINITY,
   didWin,
