@@ -56,6 +56,9 @@ const {
   evaluateAdvanced,
 } = require('./aiEvalTiers');
 
+const { evaluateAtomic, DEFAULT_ATOMIC_WEIGHTS } = require('./aiAtomicEval');
+const { getAtomicWeights } = require('./aiAtomicWeights');
+
 // Sparse board I/O: utils/aiSparseBoard.js
 
 // ============================================
@@ -76,6 +79,8 @@ const DIFFICULTY_CONFIGS = {
   impossible_tortuga: { depth: 8, evalFn: 'impossible', topN: 1, timeLimitMs: 6000, pvs: true, lmr: true, quiescence: true, weightsKey: 'tortuga' },
   // "Legacy" — pre-win-points weights. Benchmarking only.
   impossible_legacy: { depth: 8, evalFn: 'impossible', topN: 1, timeLimitMs: 4000, pvs: true, lmr: true, quiescence: true, weightsKey: 'legacy' },
+  // Phase C Stage 1 — atomic-feature linear eval, weights learned from self-play.
+  impossible_atomic: { depth: 8, evalFn: 'atomic', topN: 1, timeLimitMs: 6000, pvs: true, lmr: true, quiescence: true, weightsKey: 'atomic' },
 };
 
 // ============================================
@@ -186,6 +191,7 @@ function evaluatePosition(board, color, evalType = 'standard', weights) {
     case 'simple': return evaluateSimple(board, color);
     case 'advanced': return evaluateAdvanced(board, color);
     case 'impossible': return evaluateImpossible(board, color, weights);
+    case 'atomic': return evaluateAtomic(board, color, weights);
     default: return evaluateStandard(board, color);
   }
 }
@@ -507,8 +513,21 @@ function makeAIMove(game, difficulty = 'medium', opts = {}) {
   const ttable = new Map();
 
   // Resolve weights: opts.weights (tuner injection) > config.weightsKey > default.
-  const WEIGHTS_MAP = { legacy: LEGACY_IMPOSSIBLE_WEIGHTS, tortuga: TORTUGA_IMPOSSIBLE_WEIGHTS };
-  const weights = opts.weights || WEIGHTS_MAP[config.weightsKey] || undefined;
+  // 'atomic' is resolved lazily via getAtomicWeights() so AI_ATOMIC_WEIGHTS_PATH
+  // is read from env at first use, not at module load.
+  const WEIGHTS_MAP = {
+    legacy: LEGACY_IMPOSSIBLE_WEIGHTS,
+    tortuga: TORTUGA_IMPOSSIBLE_WEIGHTS,
+    atomic: null,
+  };
+  let weights;
+  if (opts.weights) {
+    weights = opts.weights;
+  } else if (config.weightsKey === 'atomic') {
+    weights = getAtomicWeights();
+  } else if (config.weightsKey) {
+    weights = WEIGHTS_MAP[config.weightsKey];
+  }
 
   // Time-budgeted iterative deepening + search enhancements (impossible mode only).
   // For other modes, searchState is undefined and there's zero overhead.

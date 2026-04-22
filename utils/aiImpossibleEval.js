@@ -6,10 +6,12 @@
  *   1. Weight configs (B-Rabbit / Tortuga / Legacy)
  *   2. Weight-gating predicates  (skip work when all related weights are 0)
  *   3. Feature helpers           (per-feature primitives, several exported)
- *   4. Phase C-lite atomics      (cheap board scalars; default weight 0)
- *   5. Eval context              (cached facts shared across feature groups)
- *   6. Feature groups            (one function per cluster of related features)
- *   7. Orchestration             (computeImpossibleFeatureContributions / evaluateImpossible)
+ *   4. Eval context              (cached facts shared across feature groups)
+ *   5. Feature groups            (one function per cluster of related features)
+ *   6. Orchestration             (computeImpossibleFeatureContributions / evaluateImpossible)
+ *
+ * Note: Phase C-lite atomic features were moved to utils/aiAtomicEval.js
+ * (Stage 1 of Phase C) to consolidate atomic-feature work in one module.
  */
 
 const {
@@ -82,10 +84,6 @@ const DEFAULT_IMPOSSIBLE_WEIGHTS = {
   pieceCoordination: 15,               // O(pieces × 64) knight-1 scan
   defensiveCoverOfGoalFiles: 30,       // O(pieces × 8 goal squares)
   penultimateRankForcedWin: 400,       // O(pieces × 3)
-  // Phase C-lite atomics (default 0 until tuner assigns weight)
-  atomicBallGoalKnightGap: 0,          // O(8)
-  atomicAllyBallKnightGap: 0,          // O(pieces)
-  atomicCenterOccupancy: 0,            // O(pieces)
 };
 
 /** Full-featured eval — all 22 features active (benchmarking). */
@@ -116,9 +114,6 @@ const LEGACY_IMPOSSIBLE_WEIGHTS = {
   pieceCoordination: 0,
   defensiveCoverOfGoalFiles: 0,
   penultimateRankForcedWin: 0,
-  atomicBallGoalKnightGap: 0,
-  atomicAllyBallKnightGap: 0,
-  atomicCenterOccupancy: 0,
 };
 
 // ============================================
@@ -148,11 +143,6 @@ function needsDeliveryThreat(weights) {
 
 function needsPieceAdvancement(weights) {
   return !!(weights.pieceAdvancement || weights.pieceAdvancementUnderThreat);
-}
-
-function needsAtomics(weights) {
-  return !!(weights.atomicBallGoalKnightGap || weights.atomicAllyBallKnightGap
-    || weights.atomicCenterOccupancy);
 }
 
 // ============================================
@@ -364,50 +354,7 @@ function penultimateRankForcedWin(board, color) {
 }
 
 // ============================================
-// 4. PHASE C-LITE ATOMICS (cheap board scalars)
-// ============================================
-
-/** Min knight moves from ball to any square on `color`'s scoring goal row. */
-function minKnightBallToGoalRow(board, color) {
-  const bh = findBallHolder(board, color);
-  if (!bh) return 99;
-  const goalRow = color === 'white' ? 0 : 7;
-  const ballSq = cellKeyToSqIndex(bh.cellKey);
-  let minD = 99;
-  for (let col = 0; col < 8; col++) {
-    const sq = goalRow * 8 + col;
-    const d = KNIGHT_DIST[ballSq][sq];
-    if (d < minD) minD = d;
-  }
-  return minD;
-}
-
-/** Min knight moves from any non-ball friendly piece to friendly ball. */
-function minKnightAllyToBall(board, color) {
-  const bh = findBallHolder(board, color);
-  if (!bh) return 99;
-  const ballSq = cellKeyToSqIndex(bh.cellKey);
-  let minD = 99;
-  for (const { cellKey, piece } of findPieces(board, color)) {
-    if (piece.hasBall) continue;
-    const d = KNIGHT_DIST[cellKeyToSqIndex(cellKey)][ballSq];
-    if (d < minD) minD = d;
-  }
-  return minD;
-}
-
-/** Pieces in the central 4×4 (rows/cols 2–5 zero-based ≡ ranks 3–6, files c–f). */
-function countCenterRegionPieces(board, color) {
-  let n = 0;
-  for (const { cellKey } of findPieces(board, color)) {
-    const { row, col } = getKeyCoordinates(cellKey);
-    if (row >= 2 && row <= 5 && col >= 2 && col <= 5) n++;
-  }
-  return n;
-}
-
-// ============================================
-// 5. EVAL CONTEXT
+// 4. EVAL CONTEXT
 // ============================================
 
 /**
@@ -432,7 +379,7 @@ function buildImpossibleEvalContext(board, color, weights) {
 }
 
 // ============================================
-// 6. FEATURE GROUPS
+// 5. FEATURE GROUPS
 // ============================================
 // Each group returns a partial contribution dict: only the keys whose weight
 // is non-zero appear in the output. `computeImpossibleFeatureContributions`
@@ -618,28 +565,8 @@ function evalCoordinationAndForcedWin(board, weights, ctx) {
   return out;
 }
 
-function evalAtomics(board, weights, ctx) {
-  if (!needsAtomics(weights)) return {};
-  const { color, opponentColor } = ctx;
-  const out = {};
-  if (weights.atomicBallGoalKnightGap) {
-    // Smaller gap = closer to scoring. Invert so positive weight rewards us.
-    out.atomicBallGoalKnightGap = minKnightBallToGoalRow(board, opponentColor)
-      - minKnightBallToGoalRow(board, color);
-  }
-  if (weights.atomicAllyBallKnightGap) {
-    out.atomicAllyBallKnightGap = minKnightAllyToBall(board, opponentColor)
-      - minKnightAllyToBall(board, color);
-  }
-  if (weights.atomicCenterOccupancy) {
-    out.atomicCenterOccupancy = countCenterRegionPieces(board, color)
-      - countCenterRegionPieces(board, opponentColor);
-  }
-  return out;
-}
-
 // ============================================
-// 7. ORCHESTRATION
+// 6. ORCHESTRATION
 // ============================================
 
 /**
@@ -661,7 +588,6 @@ function computeImpossibleFeatureContributions(board, color, weights = DEFAULT_I
     evalDefensiveStructure(board, weights, ctx),
     evalWinPoints(board, weights, ctx),
     evalCoordinationAndForcedWin(board, weights, ctx),
-    evalAtomics(board, weights, ctx),
   );
 }
 

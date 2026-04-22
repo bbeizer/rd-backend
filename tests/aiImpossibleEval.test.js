@@ -144,21 +144,4 @@ describe('Impossible eval module', () => {
     assert.ok(penultimateRankForcedWin(board, 'white') >= 1);
   });
 
-  it('Phase C-lite atomics: computed only when that weight is non-zero', () => {
-    const board = buildBoard([
-      { key: 'e4', color: 'white', hasBall: true },
-      { key: 'e5', color: 'white', hasBall: false },
-      { key: 'd4', color: 'black', hasBall: true },
-      { key: 'd5', color: 'black', hasBall: false },
-    ]);
-    const c0 = computeImpossibleFeatureContributions(board, 'white', DEFAULT_IMPOSSIBLE_WEIGHTS);
-    assert.strictEqual(c0.atomicBallGoalKnightGap, undefined);
-
-    const zeroAll = { ...DEFAULT_IMPOSSIBLE_WEIGHTS };
-    for (const k of Object.keys(zeroAll)) zeroAll[k] = 0;
-    zeroAll.atomicBallGoalKnightGap = 1;
-    const c1 = computeImpossibleFeatureContributions(board, 'white', zeroAll);
-    assert.ok(typeof c1.atomicBallGoalKnightGap === 'number');
-    assert.strictEqual(c1.ballAdvancement, undefined);
-  });
 });
