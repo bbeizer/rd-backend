@@ -53,8 +53,11 @@ const {
  */
 const DEFAULT_IMPOSSIBLE_WEIGHTS = {
   ballAdvancement: 30,                 // O(1)
-  pieceAdvancement: 8,                 // O(pieces)
-  pieceAdvancementUnderThreat: 3,      // O(pieces) — shares with pieceAdvancement
+  // pieceAdvancement* pair carries equal weight: same logical fact (mass delta)
+  // routes to one bucket or the other depending on opp ball position. Unequal
+  // weights would break POV antisymmetry (was 8/3 before sym_off promotion).
+  pieceAdvancement: 8,
+  pieceAdvancementUnderThreat: 8,
   forwardPass: 25,                     // O(8) — shared pass list
   lateralPass: 10,                     // O(8) — shares
   backwardPass: 5,                     // O(8) — shares
@@ -65,14 +68,12 @@ const DEFAULT_IMPOSSIBLE_WEIGHTS = {
   relayPieces: 0,                      // O(pieces × 8 ray-cast)
   knightMobility: 0,                   // O(pieces × ~8)
   blockedLanes: 0,                     // O(pieces × 8 ray-cast) — heavy
-  deliveryThreat0: 500,                // O(delivery × pieces) knight-dist
-  deliveryThreat1: 300,                // O(delivery × pieces) — shares
-  deliveryThreat2: 150,                // O(delivery × pieces) — shares
-  deliveryThreat3: 60,                 // O(delivery × pieces) — shares
-  ourDeliveryThreat0: 450,             // O(delivery × pieces) — shares
-  ourDeliveryThreat1: 250,             // O(delivery × pieces) — shares
-  ourDeliveryThreat2: 120,             // O(delivery × pieces) — shares
-  ourDeliveryThreat3: 50,              // O(delivery × pieces) — shares
+  // deliveryThreatN === ourDeliveryThreatN for POV antisymmetry; defense > offense
+  // weighting (was 500/450, 300/250, …) broke it. sym_off bake-off picked offense.
+  deliveryThreat0: 450, ourDeliveryThreat0: 450,
+  deliveryThreat1: 250, ourDeliveryThreat1: 250,
+  deliveryThreat2: 120, ourDeliveryThreat2: 120,
+  deliveryThreat3: 50,  ourDeliveryThreat3: 50,
   chainFragility: 25,                  // O(BFS + chain × 8)
   networkConnectivity: 0,              // O(pieces × 8)
   goalRowDefense: 0,                   // O(pieces)

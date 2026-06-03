@@ -91,8 +91,9 @@ describe('Impossible eval module', () => {
       { key: 'c6', color: 'black', hasBall: false },
       { key: 'h1', color: 'black', hasBall: false },
     ]);
-    assert.strictEqual(evaluateImpossible(nearWinWhite, 'white', DEFAULT_IMPOSSIBLE_WEIGHTS), 612);
-    assert.strictEqual(evaluateImpossible(nearWinWhite, 'black', DEFAULT_IMPOSSIBLE_WEIGHTS), -692);
+    // Post-symmetrization: white and black scores are exact negatives (POV antisymmetry).
+    assert.strictEqual(evaluateImpossible(nearWinWhite, 'white', DEFAULT_IMPOSSIBLE_WEIGHTS), 662);
+    assert.strictEqual(evaluateImpossible(nearWinWhite, 'black', DEFAULT_IMPOSSIBLE_WEIGHTS), -662);
 
     const minimal = buildBoard([
       { key: 'e4', color: 'white', hasBall: true },
@@ -100,7 +101,7 @@ describe('Impossible eval module', () => {
       { key: 'd4', color: 'black', hasBall: true },
       { key: 'd5', color: 'black', hasBall: false },
     ]);
-    assert.strictEqual(evaluateImpossible(minimal, 'white', DEFAULT_IMPOSSIBLE_WEIGHTS), 110);
+    assert.strictEqual(evaluateImpossible(minimal, 'white', DEFAULT_IMPOSSIBLE_WEIGHTS), 140);
   });
 
   it('weighted sum of contributions matches evaluateImpossible (non-terminal)', () => {
