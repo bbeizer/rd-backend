@@ -34,6 +34,7 @@
     "mongodb": "^6.3.0",
     "mongoose": "^8.1.1",
     "morgan": "^1.10.0",
+    "onnxruntime-node": "^1.25.1",
     "resend": "^4.4.1",
     "socket.io": "^4.8.1",
     "uuid": "^10.0.0"

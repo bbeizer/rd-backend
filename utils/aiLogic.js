@@ -58,6 +58,7 @@ const {
 
 const { evaluateAtomic, DEFAULT_ATOMIC_WEIGHTS } = require('./aiAtomicEval');
 const { getAtomicWeights } = require('./aiAtomicWeights');
+const { evaluateNN } = require('./aiNNEval');
 
 // Sparse board I/O: utils/aiSparseBoard.js
 
@@ -81,6 +82,8 @@ const DIFFICULTY_CONFIGS = {
   impossible_legacy: { depth: 8, evalFn: 'impossible', topN: 1, timeLimitMs: 4000, pvs: true, lmr: true, quiescence: true, weightsKey: 'legacy' },
   // Phase C Stage 1 — atomic-feature linear eval, weights learned from self-play.
   impossible_atomic: { depth: 8, evalFn: 'atomic', topN: 1, timeLimitMs: 6000, pvs: true, lmr: true, quiescence: true, weightsKey: 'atomic' },
+  // MLP-learned eval — drop-in replacement for the hand-tuned eval at leaf nodes.
+  impossible_nn: { depth: 8, evalFn: 'nn', topN: 1, timeLimitMs: 6000, pvs: true, lmr: true, quiescence: true },
 };
 
 // ============================================
@@ -192,6 +195,7 @@ function evaluatePosition(board, color, evalType = 'standard', weights) {
     case 'advanced': return evaluateAdvanced(board, color);
     case 'impossible': return evaluateImpossible(board, color, weights);
     case 'atomic': return evaluateAtomic(board, color, weights);
+    case 'nn': return evaluateNN(board, color);
     default: return evaluateStandard(board, color);
   }
 }
@@ -304,7 +308,7 @@ function minimax(board, depth, alpha, beta, isMaximizing, aiColor, currentTurn, 
       }
     }
     return {
-      score: evaluatePosition(board, aiColor, evalType, searchState && searchState.weights),
+      score: evaluatePosition(board, aiColor, evalType, searchState?.weights),
       moves: [],
     };
   }
@@ -568,11 +572,23 @@ function makeAIMove(game, difficulty = 'medium', opts = {}) {
     lastCompletedDepth = 1;
   }
 
-  if (config.topN > 1) {
+  // Effective topN — opts.topN overrides config.topN (used by selfplay for variance).
+  const effectiveTopN = (typeof opts.topN === 'number' && opts.topN > 0) ? opts.topN : config.topN;
+  const topNEpsilon = (typeof opts.topNEpsilon === 'number') ? opts.topNEpsilon : 1.0;
+  const topNGap = (typeof opts.topNGap === 'number') ? opts.topNGap : 3.0;
+  const ROOT_INF_THRESHOLD = AI_CONFIG.INFINITY - 100;
+
+  if (effectiveTopN > 1) {
     // Score all root outcomes at full depth, pick randomly from top N.
     // The TT is already warmed from iterative deepening so this is fast.
     const outcomes = generateTurnOutcomes(board, aiColor);
     const nextTurn = aiColor === 'white' ? 'black' : 'white';
+
+    // Cap re-scoring depth at 3. Deep re-scores are prohibitively slow for
+    // high-depth configs (impossible at depth 8 would re-score every candidate
+    // at depth 7 with no time limit). The TT is already warm from iterative
+    // deepening so shallow re-scores still produce well-ordered candidates.
+    const rescoreDepth = Math.min(lastCompletedDepth - 1, 3);
 
     const scored = outcomes
       .filter(o => o.moves.length > 0)
@@ -582,14 +598,35 @@ function makeAIMove(game, difficulty = 'medium', opts = {}) {
         // weights propagate through the topN evaluation. Without this, injected
         // weights (e.g. from the tuner) would be silently dropped.
         score: minimax(
-          outcome.board, lastCompletedDepth - 1, -Infinity, Infinity,
+          outcome.board, rescoreDepth, -Infinity, Infinity,
           false, aiColor, nextTurn, config.evalFn, ttable,
           weights ? { deadline: Infinity, nodesSearched: 0, timeUp: false, pvs: false, lmr: false, quiescence: false, weights } : null
         ).score,
       }));
 
     scored.sort((a, b) => b.score - a.score);
-    const candidates = scored.slice(0, Math.min(config.topN, scored.length));
+    const topPool = scored.slice(0, Math.min(effectiveTopN, scored.length));
+    const bestScore = topPool[0].score;
+    const secondScore = topPool.length > 1 ? topPool[1].score : bestScore;
+
+    // Three-tier candidate selection:
+    //   1. Forced     — best is a proven win (≥ INF threshold). Only winning moves
+    //                   qualify; never degrade to a non-winning candidate.
+    //   2. Dominant   — best leads second-best by ≥ topNGap. Search found something
+    //                   decisive that hasn't resolved to a literal mate yet (e.g.
+    //                   +8.0 vs +1.5). Take the best alone; randomizing here would
+    //                   throw away signal the search actually produced.
+    //   3. Similar    — top moves are within topNEpsilon of best. Genuinely close
+    //                   call; randomize among them for variance in training data.
+    let candidates;
+    if (bestScore >= ROOT_INF_THRESHOLD) {
+      candidates = topPool.filter(s => s.score >= ROOT_INF_THRESHOLD);
+    } else if (bestScore - secondScore >= topNGap) {
+      candidates = [topPool[0]];
+    } else {
+      candidates = topPool.filter(s => s.score >= bestScore - topNEpsilon);
+    }
+
     bestMoves = candidates[Math.floor(Math.random() * candidates.length)].moves;
   } else {
     bestMoves = result.moves;

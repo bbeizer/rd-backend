@@ -17,6 +17,8 @@ const MAX_TURNS = 100; // prevent infinite games
  * @param {(ply: object) => void} [opts.onPly] - Called after each move with a
  *   plain object snapshot (pre-move board, side, chosen moves, search score).
  *   Used by scripts/selfplay.js for training-data capture.
+ * @param {object} [opts.aiOpts] - Forwarded to makeAIMove for both sides.
+ *   Useful for selfplay variance (e.g. { topN: 3, topNEpsilon: 1.0, topNGap: 3.0 }).
  */
 function playGame(whiteDifficulty, blackDifficulty, opts = {}) {
   let game = {
@@ -31,6 +33,7 @@ function playGame(whiteDifficulty, blackDifficulty, opts = {}) {
   };
 
   const onPly = typeof opts.onPly === 'function' ? opts.onPly : null;
+  const aiOpts = opts.aiOpts || {};
 
   while (game.status !== 'completed' && game.turnNumber < MAX_TURNS) {
     const isWhiteTurn = game.currentPlayerTurn === 'white';
@@ -39,7 +42,7 @@ function playGame(whiteDifficulty, blackDifficulty, opts = {}) {
     const preMoveBoard = game.currentBoardStatus;
 
     game.aiColor = sideToMove;
-    game = makeAIMove(game, difficulty);
+    game = makeAIMove(game, difficulty, aiOpts);
 
     if (onPly) {
       const last = game.moveHistory[game.moveHistory.length - 1] || {};
@@ -127,6 +130,22 @@ if (!section || section === 'topdogs') {
 
   console.log('--- Hard vs Legacy ---');
   runMatchup('hard', 'impossible_legacy', 2);
+}
+
+if (!section || section === 'nn') {
+  console.log('--- NN vs B-Rabbit ---');
+  runMatchup('impossible_nn', 'impossible', 2);
+
+  console.log('--- NN vs Hard ---');
+  runMatchup('impossible_nn', 'hard', 2);
+}
+
+if (!section || section === 'atomic') {
+  console.log('--- Atomic vs B-Rabbit ---');
+  runMatchup('impossible_atomic', 'impossible', 2);
+
+  console.log('--- Atomic vs Hard ---');
+  runMatchup('impossible_atomic', 'hard', 2);
 }
 
 if (!section || section === 'triangle') {
