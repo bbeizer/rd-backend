@@ -91,8 +91,9 @@ describe('Impossible eval module', () => {
       { key: 'c6', color: 'black', hasBall: false },
       { key: 'h1', color: 'black', hasBall: false },
     ]);
-    assert.strictEqual(evaluateImpossible(nearWinWhite, 'white', DEFAULT_IMPOSSIBLE_WEIGHTS), 612);
-    assert.strictEqual(evaluateImpossible(nearWinWhite, 'black', DEFAULT_IMPOSSIBLE_WEIGHTS), -692);
+    // Post-symmetrization: white and black scores are exact negatives (POV antisymmetry).
+    assert.strictEqual(evaluateImpossible(nearWinWhite, 'white', DEFAULT_IMPOSSIBLE_WEIGHTS), 662);
+    assert.strictEqual(evaluateImpossible(nearWinWhite, 'black', DEFAULT_IMPOSSIBLE_WEIGHTS), -662);
 
     const minimal = buildBoard([
       { key: 'e4', color: 'white', hasBall: true },
@@ -100,7 +101,7 @@ describe('Impossible eval module', () => {
       { key: 'd4', color: 'black', hasBall: true },
       { key: 'd5', color: 'black', hasBall: false },
     ]);
-    assert.strictEqual(evaluateImpossible(minimal, 'white', DEFAULT_IMPOSSIBLE_WEIGHTS), 110);
+    assert.strictEqual(evaluateImpossible(minimal, 'white', DEFAULT_IMPOSSIBLE_WEIGHTS), 140);
   });
 
   it('weighted sum of contributions matches evaluateImpossible (non-terminal)', () => {
@@ -144,21 +145,4 @@ describe('Impossible eval module', () => {
     assert.ok(penultimateRankForcedWin(board, 'white') >= 1);
   });
 
-  it('Phase C-lite atomics: computed only when that weight is non-zero', () => {
-    const board = buildBoard([
-      { key: 'e4', color: 'white', hasBall: true },
-      { key: 'e5', color: 'white', hasBall: false },
-      { key: 'd4', color: 'black', hasBall: true },
-      { key: 'd5', color: 'black', hasBall: false },
-    ]);
-    const c0 = computeImpossibleFeatureContributions(board, 'white', DEFAULT_IMPOSSIBLE_WEIGHTS);
-    assert.strictEqual(c0.atomicBallGoalKnightGap, undefined);
-
-    const zeroAll = { ...DEFAULT_IMPOSSIBLE_WEIGHTS };
-    for (const k of Object.keys(zeroAll)) zeroAll[k] = 0;
-    zeroAll.atomicBallGoalKnightGap = 1;
-    const c1 = computeImpossibleFeatureContributions(board, 'white', zeroAll);
-    assert.ok(typeof c1.atomicBallGoalKnightGap === 'number');
-    assert.strictEqual(c1.ballAdvancement, undefined);
-  });
 });

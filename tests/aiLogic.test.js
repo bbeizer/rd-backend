@@ -442,3 +442,51 @@ describe('Win detection', () => {
     assert.strictEqual(didWin(board), null);
   });
 });
+
+// Regression test for the opts.topN override + forced-win guard added in
+// aiLogic.js makeAIMove. Selfplay needs to override `impossible`'s topN: 1
+// for variance, but a forced-win position must still pick a winning move —
+// never randomize down to a non-winning candidate.
+describe('opts.topN override never degrades forced wins', () => {
+  it('hard difficulty + opts.topN=5 still takes the immediate win', () => {
+    const board = buildBoard([
+      { key: 'd7', color: 'white', hasBall: true },
+      { key: 'd8', color: 'white', hasBall: false }, // pass here = instant win
+      { key: 'f1', color: 'white', hasBall: false },
+      { key: 'a1', color: 'white', hasBall: false },
+      { key: 'a8', color: 'black', hasBall: true },
+      { key: 'b8', color: 'black', hasBall: false },
+      { key: 'c6', color: 'black', hasBall: false },
+      { key: 'h1', color: 'black', hasBall: false },
+    ]);
+
+    // Run several trials — randomization would eventually pick a losing
+    // candidate if the forced-win guard weren't in place.
+    for (let trial = 0; trial < 10; trial++) {
+      const game = createMockGame({ currentBoardStatus: board, aiColor: 'white' });
+      const result = makeAIMove(game, 'hard', { topN: 5 });
+      assert.strictEqual(result.status, 'completed', `trial ${trial}: should win`);
+      assert.strictEqual(result.winner, 'AI', `trial ${trial}: AI should be winner`);
+    }
+  });
+
+  // Regression: `impossible` with opts.topN > 1 enters the topN re-scoring path,
+  // which passes null searchState to minimax. `null && null.weights` short-circuits
+  // to null — not undefined — so evaluateImpossible received null weights and crashed.
+  // Fix: use optional chaining (searchState?.weights) so null → undefined → default.
+  it('impossible difficulty + opts.topN=3 does not crash (null weights regression)', () => {
+    const board = buildBoard([
+      { key: 'd7', color: 'white', hasBall: true },
+      { key: 'd8', color: 'white', hasBall: false },
+      { key: 'f1', color: 'white', hasBall: false },
+      { key: 'a1', color: 'white', hasBall: false },
+      { key: 'a8', color: 'black', hasBall: true },
+      { key: 'b8', color: 'black', hasBall: false },
+      { key: 'c6', color: 'black', hasBall: false },
+      { key: 'h1', color: 'black', hasBall: false },
+    ]);
+
+    const game = createMockGame({ currentBoardStatus: board, aiColor: 'white' });
+    assert.doesNotThrow(() => makeAIMove(game, 'impossible', { topN: 3 }));
+  });
+});

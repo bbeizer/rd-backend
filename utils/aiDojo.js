@@ -8,7 +8,19 @@ const { makeAIMove } = require('./aiLogic');
 
 const MAX_TURNS = 100; // prevent infinite games
 
-function playGame(whiteDifficulty, blackDifficulty) {
+/**
+ * Play one dojo game between two difficulties.
+ *
+ * @param {string} whiteDifficulty
+ * @param {string} blackDifficulty
+ * @param {object} [opts]
+ * @param {(ply: object) => void} [opts.onPly] - Called after each move with a
+ *   plain object snapshot (pre-move board, side, chosen moves, search score).
+ *   Used by scripts/selfplay.js for training-data capture.
+ * @param {object} [opts.aiOpts] - Forwarded to makeAIMove for both sides.
+ *   Useful for selfplay variance (e.g. { topN: 3, topNEpsilon: 1.0, topNGap: 3.0 }).
+ */
+function playGame(whiteDifficulty, blackDifficulty, opts = {}) {
   let game = {
     aiColor: 'white',
     currentBoardStatus: initializeBoardStatus(),
@@ -20,22 +32,46 @@ function playGame(whiteDifficulty, blackDifficulty) {
     status: 'active',
   };
 
+  const onPly = typeof opts.onPly === 'function' ? opts.onPly : null;
+  const aiOpts = opts.aiOpts || {};
+
   while (game.status !== 'completed' && game.turnNumber < MAX_TURNS) {
     const isWhiteTurn = game.currentPlayerTurn === 'white';
     const difficulty = isWhiteTurn ? whiteDifficulty : blackDifficulty;
+    const sideToMove = game.currentPlayerTurn;
+    const preMoveBoard = game.currentBoardStatus;
 
-    // Set aiColor to whoever's turn it is
-    game.aiColor = game.currentPlayerTurn;
-    game = makeAIMove(game, difficulty);
+    game.aiColor = sideToMove;
+    game = makeAIMove(game, difficulty, aiOpts);
+
+    if (onPly) {
+      const last = game.moveHistory[game.moveHistory.length - 1] || {};
+      onPly({
+        turnNumber: game.turnNumber - 1,
+        sideToMove,
+        difficulty,
+        preMoveBoard,
+        postMoveBoard: game.currentBoardStatus,
+        moves: [
+          ...(last.pieceMove ? [{ type: 'move', ...last.pieceMove }] : []),
+          ...(last.ballPasses || []).map(p => ({ type: 'pass', ...p })),
+        ],
+        searchScore: game._aiMeta ? game._aiMeta.rootScore : null,
+      });
+    }
   }
 
+  let result;
   if (game.status === 'completed') {
     const winnerDifficulty = game.winner === game.whitePlayerName ? whiteDifficulty : blackDifficulty;
     const winnerColor = game.winner === game.whitePlayerName ? 'white' : 'black';
-    return { winner: winnerDifficulty, winnerColor, turns: game.turnNumber };
+    result = { winner: winnerDifficulty, winnerColor, turns: game.turnNumber };
+  } else {
+    result = { winner: 'draw', winnerColor: null, turns: game.turnNumber };
   }
 
-  return { winner: 'draw', winnerColor: null, turns: game.turnNumber };
+  if (onPly) onPly({ terminal: true, ...result });
+  return result;
 }
 
 function runMatchup(diff1, diff2, numGames = 10) {
@@ -61,6 +97,10 @@ function runMatchup(diff1, diff2, numGames = 10) {
   console.log(`\n  Result: ${diff1} ${results[diff1]}-${results[diff2]} ${diff2} (${results.draw} draws, avg ${avgTurns} turns)\n`);
   return results;
 }
+
+module.exports = { playGame, runMatchup };
+
+if (require.main !== module) return;
 
 console.log('=== AI DOJO ===\n');
 
@@ -90,6 +130,22 @@ if (!section || section === 'topdogs') {
 
   console.log('--- Hard vs Legacy ---');
   runMatchup('hard', 'impossible_legacy', 2);
+}
+
+if (!section || section === 'nn') {
+  console.log('--- NN vs B-Rabbit ---');
+  runMatchup('impossible_nn', 'impossible', 2);
+
+  console.log('--- NN vs Hard ---');
+  runMatchup('impossible_nn', 'hard', 2);
+}
+
+if (!section || section === 'atomic') {
+  console.log('--- Atomic vs B-Rabbit ---');
+  runMatchup('impossible_atomic', 'impossible', 2);
+
+  console.log('--- Atomic vs Hard ---');
+  runMatchup('impossible_atomic', 'hard', 2);
 }
 
 if (!section || section === 'triangle') {

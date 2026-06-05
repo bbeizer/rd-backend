@@ -12,3 +12,16 @@ data/*.db-shm
 # Tuner checkpoint / results (generated)
 tuner-checkpoint.json
 tuner-results.json
+
+# Selfplay data (generated; large, regenerable)
+data/selfplay/*.jsonl
+
+# NN weight variants (canonical mlp_weights.json / model.onnx are tracked; A/B copies are local)
+mlp_weights_*.json
+model_*.onnx
+
+# Local Claude config / agent state
+.claude/
+
+# Legacy artifact from earlier training round
+weights.json
