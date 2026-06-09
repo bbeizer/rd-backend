@@ -58,7 +58,23 @@ const {
 
 const { evaluateAtomic, DEFAULT_ATOMIC_WEIGHTS } = require('./aiAtomicEval');
 const { getAtomicWeights } = require('./aiAtomicWeights');
-const { evaluateNN } = require('./aiNNEval');
+const path = require('path');
+const { evaluateNN, createNNEvaluator } = require('./aiNNEval');
+
+// Challenger NN evaluator for A/B dojo matchups. Loads a second weights file
+// alongside the canonical mlp_weights.json so two distinct NNs can play in one
+// process. Path is configurable via AI_NN_CHALLENGER_PATH; defaults to
+// combo_big (the last-promoted NN, against which new candidates are gated).
+const CHALLENGER_WEIGHTS_PATH = process.env.AI_NN_CHALLENGER_PATH
+  ? path.resolve(process.env.AI_NN_CHALLENGER_PATH)
+  : path.resolve(__dirname, '..', 'mlp_weights_combo_big.json');
+let evaluateNNChallenger = null;
+function getChallengerNN() {
+  if (!evaluateNNChallenger) {
+    evaluateNNChallenger = createNNEvaluator(CHALLENGER_WEIGHTS_PATH).evaluateNN;
+  }
+  return evaluateNNChallenger;
+}
 
 // Sparse board I/O: utils/aiSparseBoard.js
 
@@ -84,6 +100,9 @@ const DIFFICULTY_CONFIGS = {
   impossible_atomic: { depth: 8, evalFn: 'atomic', topN: 1, timeLimitMs: 6000, pvs: true, lmr: true, quiescence: true, weightsKey: 'atomic' },
   // MLP-learned eval — drop-in replacement for the hand-tuned eval at leaf nodes.
   impossible_nn: { depth: 8, evalFn: 'nn', topN: 1, timeLimitMs: 6000, pvs: true, lmr: true, quiescence: true },
+  // Challenger NN — loads AI_NN_CHALLENGER_PATH (default: mlp_weights_combo_big.json).
+  // Used for head-to-head dojo matchups vs the canonical impossible_nn.
+  impossible_nn_b: { depth: 8, evalFn: 'nn_b', topN: 1, timeLimitMs: 6000, pvs: true, lmr: true, quiescence: true },
 };
 
 // ============================================
@@ -196,6 +215,7 @@ function evaluatePosition(board, color, evalType = 'standard', weights) {
     case 'impossible': return evaluateImpossible(board, color, weights);
     case 'atomic': return evaluateAtomic(board, color, weights);
     case 'nn': return evaluateNN(board, color);
+    case 'nn_b': return getChallengerNN()(board, color);
     default: return evaluateStandard(board, color);
   }
 }

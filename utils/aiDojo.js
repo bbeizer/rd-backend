@@ -1,59 +1,55 @@
 /**
- * AI Dojo — pit different players against each other
+ * AI Dojo — pit different difficulty levels against each other
  * Run: node utils/aiDojo.js
  */
 
 const { initializeBoardStatus } = require('./gameInitialization');
-const { toPlayer } = require('./aiPlayer');
+const { makeAIMove } = require('./aiLogic');
 
 const MAX_TURNS = 100; // prevent infinite games
 
 /**
- * Play one dojo game between two players.
+ * Play one dojo game between two difficulties.
  *
- * @param {string|Player} whitePlayerArg - Difficulty string or Player object.
- * @param {string|Player} blackPlayerArg - Difficulty string or Player object.
+ * @param {string} whiteDifficulty
+ * @param {string} blackDifficulty
  * @param {object} [opts]
  * @param {(ply: object) => void} [opts.onPly] - Called after each move with a
  *   plain object snapshot (pre-move board, side, chosen moves, search score).
  *   Used by scripts/selfplay.js for training-data capture.
- * @param {object} [opts.aiOpts] - Forwarded to makeAIMove when a string
- *   difficulty is coerced into a Player. Ignored if Player objects are passed
- *   directly (they carry their own opts). Useful for selfplay variance.
+ * @param {object} [opts.aiOpts] - Forwarded to makeAIMove for both sides.
+ *   Useful for selfplay variance (e.g. { topN: 3, topNEpsilon: 1.0, topNGap: 3.0 }).
  */
-function playGame(whitePlayerArg, blackPlayerArg, opts = {}) {
-  const aiOpts = opts.aiOpts || {};
-  const white = toPlayer(whitePlayerArg, aiOpts);
-  const black = toPlayer(blackPlayerArg, aiOpts);
-
+function playGame(whiteDifficulty, blackDifficulty, opts = {}) {
   let game = {
     aiColor: 'white',
     currentBoardStatus: initializeBoardStatus(),
     currentPlayerTurn: 'white',
     turnNumber: 0,
     moveHistory: [],
-    whitePlayerName: `White(${white.name})`,
-    blackPlayerName: `Black(${black.name})`,
+    whitePlayerName: `White(${whiteDifficulty})`,
+    blackPlayerName: `Black(${blackDifficulty})`,
     status: 'active',
   };
 
   const onPly = typeof opts.onPly === 'function' ? opts.onPly : null;
+  const aiOpts = opts.aiOpts || {};
 
   while (game.status !== 'completed' && game.turnNumber < MAX_TURNS) {
     const isWhiteTurn = game.currentPlayerTurn === 'white';
-    const player = isWhiteTurn ? white : black;
+    const difficulty = isWhiteTurn ? whiteDifficulty : blackDifficulty;
     const sideToMove = game.currentPlayerTurn;
     const preMoveBoard = game.currentBoardStatus;
 
     game.aiColor = sideToMove;
-    game = player.takeTurn(game);
+    game = makeAIMove(game, difficulty, aiOpts);
 
     if (onPly) {
       const last = game.moveHistory[game.moveHistory.length - 1] || {};
       onPly({
         turnNumber: game.turnNumber - 1,
         sideToMove,
-        difficulty: player.name,
+        difficulty,
         preMoveBoard,
         postMoveBoard: game.currentBoardStatus,
         moves: [
@@ -67,9 +63,9 @@ function playGame(whitePlayerArg, blackPlayerArg, opts = {}) {
 
   let result;
   if (game.status === 'completed') {
-    const winnerName = game.winner === game.whitePlayerName ? white.name : black.name;
+    const winnerDifficulty = game.winner === game.whitePlayerName ? whiteDifficulty : blackDifficulty;
     const winnerColor = game.winner === game.whitePlayerName ? 'white' : 'black';
-    result = { winner: winnerName, winnerColor, turns: game.turnNumber };
+    result = { winner: winnerDifficulty, winnerColor, turns: game.turnNumber };
   } else {
     result = { winner: 'draw', winnerColor: null, turns: game.turnNumber };
   }
@@ -142,6 +138,16 @@ if (!section || section === 'nn') {
 
   console.log('--- NN vs Hard ---');
   runMatchup('impossible_nn', 'hard', 2);
+}
+
+if (section === 'nn_ab') {
+  // Head-to-head A/B between two NNs. impossible_nn loads mlp_weights.json
+  // (canonical/candidate); impossible_nn_b loads AI_NN_CHALLENGER_PATH (default
+  // mlp_weights_combo_big.json). Override with env var, e.g.:
+  //   AI_NN_CHALLENGER_PATH=mlp_weights_round4_big.json node utils/aiDojo.js nn_ab
+  console.log('--- NN (canonical) vs NN_b (challenger) ---');
+  const games = parseInt(process.env.AI_DOJO_GAMES || '8', 10);
+  runMatchup('impossible_nn', 'impossible_nn_b', games);
 }
 
 if (!section || section === 'atomic') {
