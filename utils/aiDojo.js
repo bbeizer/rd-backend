@@ -144,6 +144,16 @@ if (!section || section === 'nn') {
   runMatchup('impossible_nn', 'hard', 2);
 }
 
+if (section === 'nn_ab') {
+  // Head-to-head A/B between two NNs. impossible_nn loads mlp_weights.json
+  // (canonical/candidate); impossible_nn_b loads AI_NN_CHALLENGER_PATH (default
+  // mlp_weights_combo_big.json). Override with env var, e.g.:
+  //   AI_NN_CHALLENGER_PATH=mlp_weights_round4_big.json node utils/aiDojo.js nn_ab
+  console.log('--- NN (canonical) vs NN_b (challenger) ---');
+  const games = parseInt(process.env.AI_DOJO_GAMES || '8', 10);
+  runMatchup('impossible_nn', 'impossible_nn_b', games);
+}
+
 if (!section || section === 'atomic') {
   console.log('--- Atomic vs B-Rabbit ---');
   runMatchup('impossible_atomic', 'impossible', 2);

@@ -238,7 +238,9 @@ describe('Impossible mode', () => {
   it('should be configured with depth 8, time budget, and search enhancements', () => {
     const cfg = DIFFICULTY_CONFIGS.impossible;
     assert.strictEqual(cfg.depth, 8);
-    assert.strictEqual(cfg.evalFn, 'impossible');
+    // 'impossible' now uses the NN eval (combo_big). B-Rabbit is still available
+    // under `hard` and the `impossible_brabbit` benchmark alias.
+    assert.strictEqual(cfg.evalFn, 'nn');
     assert.strictEqual(cfg.topN, 1);
     assert.ok(cfg.timeLimitMs > 0, 'should have time budget');
     assert.ok(cfg.pvs, 'should enable PVS');
