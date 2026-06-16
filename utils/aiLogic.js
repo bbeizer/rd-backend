@@ -89,19 +89,19 @@ const AI_CONFIG = {
 const DIFFICULTY_CONFIGS = {
   easy: { depth: 1, evalFn: 'simple', topN: 3 },
   medium: { depth: 3, evalFn: 'standard', topN: 2 },
-  hard: { depth: 4, evalFn: 'advanced', topN: 1 },
-  // "B-Rabbit" — lean eval, 6 low-value features zeroed for speed.
-  impossible: { depth: 8, evalFn: 'impossible', topN: 1, timeLimitMs: 6000, pvs: true, lmr: true, quiescence: true },
-  // "Tortuga" — full-featured eval, all features active. Benchmarking only.
-  impossible_tortuga: { depth: 8, evalFn: 'impossible', topN: 1, timeLimitMs: 6000, pvs: true, lmr: true, quiescence: true, weightsKey: 'tortuga' },
-  // "Legacy" — pre-win-points weights. Benchmarking only.
-  impossible_legacy: { depth: 8, evalFn: 'impossible', topN: 1, timeLimitMs: 4000, pvs: true, lmr: true, quiescence: true, weightsKey: 'legacy' },
-  // Phase C Stage 1 — atomic-feature linear eval, weights learned from self-play.
-  impossible_atomic: { depth: 8, evalFn: 'atomic', topN: 1, timeLimitMs: 6000, pvs: true, lmr: true, quiescence: true, weightsKey: 'atomic' },
-  // MLP-learned eval — drop-in replacement for the hand-tuned eval at leaf nodes.
+  // Promoted: B-Rabbit (depth 8, lean impossible eval) replaces the former
+  // depth-4 'advanced' hard tier. Was previously shipped as `impossible`.
+  hard: { depth: 8, evalFn: 'impossible', topN: 1, timeLimitMs: 6000, pvs: true, lmr: true, quiescence: true },
+  // Promoted: combo_big NN (beat B-Rabbit 7-1 in dojo) is now the top tier.
+  impossible: { depth: 8, evalFn: 'nn', topN: 1, timeLimitMs: 6000, pvs: true, lmr: true, quiescence: true },
+  // Alias of the new `impossible`. Kept for dojo/benchmark scripts that
+  // reference `impossible_nn` by name.
   impossible_nn: { depth: 8, evalFn: 'nn', topN: 1, timeLimitMs: 6000, pvs: true, lmr: true, quiescence: true },
-  // Challenger NN — loads AI_NN_CHALLENGER_PATH (default: mlp_weights_combo_big.json).
-  // Used for head-to-head dojo matchups vs the canonical impossible_nn.
+  // Benchmarking only — not user-facing.
+  impossible_brabbit: { depth: 8, evalFn: 'impossible', topN: 1, timeLimitMs: 6000, pvs: true, lmr: true, quiescence: true },
+  impossible_tortuga: { depth: 8, evalFn: 'impossible', topN: 1, timeLimitMs: 6000, pvs: true, lmr: true, quiescence: true, weightsKey: 'tortuga' },
+  impossible_legacy: { depth: 8, evalFn: 'impossible', topN: 1, timeLimitMs: 4000, pvs: true, lmr: true, quiescence: true, weightsKey: 'legacy' },
+  impossible_atomic: { depth: 8, evalFn: 'atomic', topN: 1, timeLimitMs: 6000, pvs: true, lmr: true, quiescence: true, weightsKey: 'atomic' },
   impossible_nn_b: { depth: 8, evalFn: 'nn_b', topN: 1, timeLimitMs: 6000, pvs: true, lmr: true, quiescence: true },
 };
 
