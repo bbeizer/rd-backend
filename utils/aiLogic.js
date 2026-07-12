@@ -152,46 +152,47 @@ function generatePassChains(board, color) {
 }
 
 function generateTurnOutcomes(board, color) {
+  // Full turn grammar: [pass chain] -> [move one non-carrier piece] -> [pass chain],
+  // where each stage is optional. The pre-move chain matters: passing the ball away
+  // frees the ex-carrier to move (e.g. pass f7->d7, move f7->d8, pass d7->d8 — a real
+  // recorded winning turn that the old move->pass-only grammar could not express).
+  // Outcomes are deduplicated by final board hash; the first (shortest) sequence
+  // reaching a given board is kept.
   const outcomes = [];
-  const pieces = findPieces(board, color);
+  const seen = new Set();
+  const push = (finalBoard, moves) => {
+    const h = hashBoard(finalBoard);
+    if (seen.has(h)) return;
+    seen.add(h);
+    outcomes.push({ board: finalBoard, moves });
+  };
 
-  // Option 1: Pass chain only (no piece move, just pass the ball through the network)
-  for (const { board: passedBoard, passMoves } of generatePassChains(board, color)) {
-    outcomes.push({ board: passedBoard, moves: passMoves });
-  }
+  // Pre-move stage: no passes, or any pass chain
+  const preOptions = [{ board, passMoves: [] }, ...generatePassChains(board, color)];
 
-  // Option 2: Move only (any piece without the ball)
-  for (const { cellKey, piece } of pieces) {
-    if (!piece.hasBall) {
-      const moves = getPieceMoves(cellKey, board, false, null);
+  for (const pre of preOptions) {
+    // End turn after passes only
+    if (pre.passMoves.length > 0) push(pre.board, pre.passMoves);
+
+    // Move any piece not currently holding the ball (post-pre-chain board)
+    const pieces = findPieces(pre.board, color);
+    for (const { cellKey, piece } of pieces) {
+      if (piece.hasBall) continue;
+      const moves = getPieceMoves(cellKey, pre.board, false, null);
       for (const moveTarget of moves) {
-        const newBoard = movePiece(cellKey, moveTarget, board);
-        outcomes.push({
-          board: newBoard,
-          moves: [{ type: 'move', from: cellKey, to: moveTarget }],
-        });
-      }
-    }
-  }
+        const boardAfterMove = movePiece(cellKey, moveTarget, pre.board);
+        const seq = [...pre.passMoves, { type: 'move', from: cellKey, to: moveTarget }];
+        push(boardAfterMove, seq);
 
-  // Option 3: Move + Pass chain (move a piece, then pass ball through network)
-  for (const { cellKey, piece } of pieces) {
-    if (!piece.hasBall) {
-      const moves = getPieceMoves(cellKey, board, false, null);
-      for (const moveTarget of moves) {
-        const boardAfterMove = movePiece(cellKey, moveTarget, board);
-
+        // Post-move stage: continue passing from wherever the ball is
         for (const { board: finalBoard, passMoves } of generatePassChains(boardAfterMove, color)) {
-          outcomes.push({
-            board: finalBoard,
-            moves: [{ type: 'move', from: cellKey, to: moveTarget }, ...passMoves],
-          });
+          push(finalBoard, [...seq, ...passMoves]);
         }
       }
     }
   }
 
-  // Option 4: No action (always valid fallback)
+  // No action (always valid fallback)
   outcomes.push({
     board: cloneBoardFast(board),
     moves: [],

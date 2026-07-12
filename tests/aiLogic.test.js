@@ -313,10 +313,10 @@ describe('Impossible mode', () => {
 
     assert.strictEqual(
       searchState._testQuiescenceExtends,
-      170,
+      467, // was 170 under the old move->pass-only grammar; pass->move->pass interleaving added outcomes
       'expected quiescence extension count for this board at depth 3 with simple eval'
     );
-    assert.strictEqual(result.score, 180);
+    assert.strictEqual(result.score, 120); // was 180 pre-interleaving; defender gains options too
   });
 });
 
@@ -490,5 +490,53 @@ describe('opts.topN override never degrades forced wins', () => {
 
     const game = createMockGame({ currentBoardStatus: board, aiColor: 'white' });
     assert.doesNotThrow(() => makeAIMove(game, 'impossible', { topN: 3 }));
+  });
+});
+
+describe('turn grammar: pass-then-move interleaving (a822c5 regression)', () => {
+  // Real recorded winning turn from prod game ...a822c5 (turn 17): white played
+  // pass f7->d7, move f7->d8, pass d7->d8 — unloading the ball frees the ex-carrier
+  // to move onto the goal rank and receive. The old move->pass-only grammar could
+  // not express this: 34 outcomes, zero wins, from a won-in-1 position.
+  const t16Board = () => buildBoard([
+    { key: 'b2', color: 'white', hasBall: false },
+    { key: 'e3', color: 'white', hasBall: false },
+    { key: 'd7', color: 'white', hasBall: false },
+    { key: 'f7', color: 'white', hasBall: true },
+    { key: 'c2', color: 'black', hasBall: true },
+    { key: 'e6', color: 'black', hasBall: false },
+    { key: 'f6', color: 'black', hasBall: false },
+    { key: 'f8', color: 'black', hasBall: false },
+  ]);
+
+  it('generates the recorded pass->move->pass winning turn', () => {
+    const { didWin } = require('../utils/aiEvalCore');
+    const outcomes = generateTurnOutcomes(t16Board(), 'white');
+    const wins = outcomes.filter(o => didWin(o.board) === 'white');
+    assert.ok(wins.length > 0, 'must find at least one immediate delivery');
+    const viaD8 = wins.find(o => o.board.d8 && o.board.d8.color === 'white' && o.board.d8.hasBall);
+    assert.ok(viaD8, 'delivery on d8 (the recorded game-winning turn) must be expressible');
+  });
+
+  it('never moves a piece while it holds the ball', () => {
+    const outcomes = generateTurnOutcomes(t16Board(), 'white');
+    for (const o of outcomes) {
+      let ballAt = 'f7'; // white ball start
+      for (const m of o.moves) {
+        if (m.type === 'move') {
+          assert.notStrictEqual(m.from, ballAt, `illegal carrier move in ${JSON.stringify(o.moves)}`);
+        } else if (m.type === 'pass') {
+          assert.strictEqual(m.from, ballAt, `pass from square without ball in ${JSON.stringify(o.moves)}`);
+          ballAt = m.to;
+        }
+      }
+    }
+  });
+
+  it('deduplicates outcomes by final board', () => {
+    const { hashBoard } = require('../utils/aiSparseBoard');
+    const outcomes = generateTurnOutcomes(t16Board(), 'white');
+    const hashes = outcomes.map(o => hashBoard(o.board));
+    assert.strictEqual(new Set(hashes).size, hashes.length, 'no duplicate final boards');
   });
 });
