@@ -146,7 +146,8 @@ function evaluateAtomic(board, color, weights = DEFAULT_ATOMIC_WEIGHTS) {
 
   const feats = extractAtomicFeatures(board);
   const whiteScore = dot(feats, weights);
-  return color === 'white' ? whiteScore : -whiteScore;
+  // `|| 0` normalizes -0 (negating a 0 white score) to +0
+  return (color === 'white' ? whiteScore : -whiteScore) || 0;
 }
 
 module.exports = {

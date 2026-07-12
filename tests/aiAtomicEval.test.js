@@ -40,9 +40,11 @@ describe('aiAtomicEval', () => {
   });
 
   it('terminal win returns +EVAL_INFINITY from winner perspective', () => {
+    // Note: exactly one delivered ball — a board with both balls on final
+    // ranks is unreachable in play and didWin's answer would be order-dependent.
     const board = buildBoard([
       { key: 'a1', color: 'black', hasBall: true },
-      { key: 'e8', color: 'white', hasBall: true },
+      { key: 'e5', color: 'white', hasBall: true },
     ]);
     assert.strictEqual(evaluateAtomic(board, 'black', DEFAULT_ATOMIC_WEIGHTS), EVAL_INFINITY);
     assert.strictEqual(evaluateAtomic(board, 'white', DEFAULT_ATOMIC_WEIGHTS), -EVAL_INFINITY);
