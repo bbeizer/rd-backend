@@ -127,13 +127,25 @@ function findBall(board) {
 }
 
 /**
- * Order outcomes so alpha-beta cutoffs fire fast.
- * At isMax nodes (rootColor about to gain): try outcomes where rootColor's
- * ball is closest to its goal rank first.
- * At isMin nodes (opponent about to gain): try outcomes where opponent's
- * ball is closest to opponent's goal rank first.
+ * Canonical signature for a turn — used to recognize "the same turn" at
+ * sibling nodes for killer/history ordering. Position-independent on purpose:
+ * a refutation that worked against one sibling often works against the rest.
  */
-function orderOutcomes(outcomes, rootColor, isMax) {
+function turnSig(moves) {
+  let s = '';
+  for (const m of moves) s += (m.type === 'pass' ? 'p' : 'm') + m.from + m.to;
+  return s;
+}
+
+/**
+ * Order outcomes so alpha-beta cutoffs fire fast. Priority:
+ *   1. Killer turns — turns that caused a cutoff at this same ply (2 slots).
+ *   2. History — turns that caused cutoffs anywhere, weighted by count.
+ *   3. Static proxy — ball distance to the relevant goal rank.
+ * Ordering is a pure speed lever: it can never change a verdict, only how
+ * fast the proof/refutation is found.
+ */
+function orderOutcomes(outcomes, rootColor, isMax, state, distFromRoot) {
   // The side that just moved is the side whose turn it WAS — i.e., for a child
   // node, the parent's sideToMove. In our recursion, when we recurse from a
   // node with sideToMove=S, children represent S having moved. So in the
@@ -142,6 +154,9 @@ function orderOutcomes(outcomes, rootColor, isMax) {
   const rootGoal = rootColor === 'white' ? 8 : 1;
   const oppColor = rootColor === 'white' ? 'black' : 'white';
   const oppGoal = oppColor === 'white' ? 8 : 1;
+
+  const killers = state && state.useKillers ? state.killers[distFromRoot] : null;
+  const history = state && state.useKillers ? state.history : null;
 
   const scored = outcomes.map(o => {
     const ball = findBall(o.board);
@@ -153,12 +168,35 @@ function orderOutcomes(outcomes, rootColor, isMax) {
         score = Math.abs(ball.row - oppGoal); // bigger = opp ball farther from opp goal
       }
     }
-    return { outcome: o, score };
+    // Fold isMax into the proxy so higher sortKey is always "try earlier".
+    let sortKey = isMax ? score : -score;
+    if (killers || history) {
+      const sig = turnSig(o.moves);
+      if (killers) {
+        if (killers[0] === sig) sortKey += 2_000_000;
+        else if (killers[1] === sig) sortKey += 1_000_000;
+      }
+      if (history) {
+        const h = history.get(sig);
+        if (h) sortKey += Math.min(h, 10_000) * 10; // below killers, above proxy
+      }
+    }
+    return { outcome: o, sortKey };
   });
-  // isMax wants rootColor's ball closer to its goal => high score first
-  // isMin wants opp's ball closer to opp's goal  => low score first
-  scored.sort((a, b) => isMax ? b.score - a.score : a.score - b.score);
+  scored.sort((a, b) => b.sortKey - a.sortKey);
   return scored.map(s => s.outcome);
+}
+
+/** Record a cutoff-causing turn: killer slots for this ply + global history. */
+function recordCutoff(state, distFromRoot, moves) {
+  if (!state.useKillers) return;
+  const sig = turnSig(moves);
+  const slots = state.killers[distFromRoot] || (state.killers[distFromRoot] = [null, null]);
+  if (slots[0] !== sig) {
+    slots[1] = slots[0];
+    slots[0] = sig;
+  }
+  state.history.set(sig, (state.history.get(sig) || 0) + 1);
 }
 
 function parseArgs() {
@@ -172,6 +210,7 @@ function parseArgs() {
     stopAfterUndecided: parseInt(get('--stopAfterUndecided', '0'), 10),
     dbPath: get('--db', DEFAULT_DB_PATH),
     persist: get('--persist', '1') !== '0',
+    killers: get('--killers', '1') !== '0',
   };
 }
 
@@ -269,7 +308,7 @@ function proofSearch(board, depth, alpha, beta, isMax, rootColor, sideToMove, tt
   const validOutcomes = outcomes.filter(o => o.moves.length > 0);
   if (validOutcomes.length === 0) return { score: 0 };
 
-  const ordered = orderOutcomes(validOutcomes, rootColor, isMax);
+  const ordered = orderOutcomes(validOutcomes, rootColor, isMax, state, distFromRoot);
   const nextSide = sideToMove === 'white' ? 'black' : 'white';
   const alphaOrig = alpha;
   const betaOrig = beta;
@@ -285,7 +324,10 @@ function proofSearch(board, depth, alpha, beta, isMax, rootColor, sideToMove, tt
       if (r.score < best) best = r.score;
       if (best < beta) beta = best;
     }
-    if (alpha >= beta) break;
+    if (alpha >= beta) {
+      recordCutoff(state, distFromRoot, outcome.moves);
+      break;
+    }
   }
 
   // Classify vs. the ORIGINAL window: a cutoff means `best` is only a bound.
@@ -371,6 +413,9 @@ function runFixture(fixture, opts, ctx) {
     timeUp: false,
     rootDepth: 0,
     ctx,
+    useKillers: opts.killers !== false,
+    killers: [],          // [distFromRoot] -> [sig, sig] — kept across ID iterations
+    history: new Map(),   // turnSig -> cutoff count
   };
   const ttable = makeTT();
   const atlasHitsBefore = ctx ? ctx.atlasHits : 0;
@@ -387,7 +432,7 @@ function runFixture(fixture, opts, ctx) {
     const outcomes = generateTurnOutcomes(board, fixture.sideToMove).filter(o => o.moves.length > 0);
     const nextSide = fixture.sideToMove === 'white' ? 'black' : 'white';
     const isMax = fixture.sideToMove === fixture.rootColor;
-    const orderedRoot = orderOutcomes(outcomes, fixture.rootColor, isMax);
+    const orderedRoot = orderOutcomes(outcomes, fixture.rootColor, isMax, state, 0);
 
     let best = isMax ? -Infinity : Infinity;
     let bestMove = null;

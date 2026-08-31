@@ -174,6 +174,22 @@ Also noted: user semantics correction adopted — T7 verdict is "resistance prov
 
 Next per program: **Step 3 — null-move pruning + killer ordering + game-record ordering hints** (the EBF 3→2 lever), then re-run walk-backs (proofs now accumulate), then the summit attempt.
 
+## ✅ STEP 3a — DONE (2026-08-31): killer + history ordering
+
+Killer moves (2 slots per ply, kept across ID iterations) + global history table, on by default, `--killers 0` to disable. Turn signature = position-independent move list, so a refutation found at one sibling gets tried first at the rest. Pure ordering — cannot change verdicts.
+
+**A/B on P1_naked_f7 (--persist 0, identical verdicts at every depth):**
+
+| depth | killers off | killers on | speedup |
+|---|---|---|---|
+| d5 | 240k | 168k | 1.4x |
+| d6 | 2.71M | 1.28M | 2.1x |
+| d7 | 6.60M | 2.93M | **2.25x** |
+
+~2.25x constant factor ≈ +1 ply of reach; compounds with the atlas and the new bound-flagged TT probing (which July's runs also lacked).
+
+**⚠️ Step 3b (null-move) design decision — null-move is PROOF-UNSOUND here.** A null-move cutoff asserts "even passing wins," but the empty turn is not legal (search filters no-op outcomes) and near-zugzwang shuffle positions exist. A null-move-derived verdict must NEVER reach the atlas. If implemented, it goes behind an opt-in `--heuristic` triage mode: results reported as "likely", persistence disabled. Sound alternative for more speed: lemma-based recognizers (the six proven battery patterns as pattern-matched terminal nodes).
+
 ## Open questions
 
 - Is the rank-7 motif actually forced, or does it require a setup phase that exploits AI weakness? Compositional proof will tell us.
