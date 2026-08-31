@@ -127,6 +127,30 @@ function findBall(board) {
 }
 
 /**
+ * Cheap trigger for the proven battery-lemma family: carrier on the opponent's
+ * penultimate rank plus at least one friendly non-carrier advanced into the
+ * opponent's half (close enough to form a battery within the extension
+ * budget). The pattern match is only a TRIGGER — verification is a real
+ * search (verify-on-match), so a false positive costs nodes, never soundness.
+ */
+function batteryThreat(board) {
+  // Both sides carry a ball — check every carrier, not findBall's first hit.
+  for (const k of Object.keys(board)) {
+    const p = board[k];
+    if (!p || !p.hasBall) continue;
+    const penult = p.color === 'white' ? 7 : 2;
+    if (parseInt(k[1], 10) !== penult) continue;
+    for (const k2 of Object.keys(board)) {
+      const q = board[k2];
+      if (!q || q.hasBall || q.color !== p.color) continue;
+      const r2 = parseInt(k2[1], 10);
+      if (p.color === 'white' ? r2 >= 5 : r2 <= 4) return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Canonical signature for a turn — used to recognize "the same turn" at
  * sibling nodes for killer/history ordering. Position-independent on purpose:
  * a refutation that worked against one sibling often works against the rest.
@@ -211,6 +235,7 @@ function parseArgs() {
     dbPath: get('--db', DEFAULT_DB_PATH),
     persist: get('--persist', '1') !== '0',
     killers: get('--killers', '1') !== '0',
+    batteryExt: parseInt(get('--batteryExt', '0'), 10),
   };
 }
 
@@ -293,7 +318,23 @@ function proofSearch(board, depth, alpha, beta, isMax, rootColor, sideToMove, tt
     }
   }
 
-  if (depth === 0) return { score: 0 };
+  if (depth === 0) {
+    // Battery-lemma extension (--batteryExt K, default off): a leaf showing a
+    // penultimate-rank battery threat gets K extra plies instead of "undecided".
+    // Sound because it's a real search; bumping rootDepth keeps
+    // distFromRoot = rootDepth - depth consistent inside the extension.
+    // Extension leaves don't re-extend (inExtension guard).
+    if (state.batteryExt > 0 && !state.inExtension && batteryThreat(board)) {
+      state.battTriggers++;
+      state.inExtension = true;
+      state.rootDepth += state.batteryExt;
+      const r = proofSearch(board, state.batteryExt, alpha, beta, isMax, rootColor, sideToMove, ttable, state);
+      state.rootDepth -= state.batteryExt;
+      state.inExtension = false;
+      return r;
+    }
+    return { score: 0 };
+  }
 
   if (hash === null) hash = hashBoard(board);
   const ttKey = `${hash}|${depth}|${sideToMove}`;
@@ -416,6 +457,9 @@ function runFixture(fixture, opts, ctx) {
     useKillers: opts.killers !== false,
     killers: [],          // [distFromRoot] -> [sig, sig] — kept across ID iterations
     history: new Map(),   // turnSig -> cutoff count
+    batteryExt: opts.batteryExt || 0,
+    inExtension: false,
+    battTriggers: 0,
   };
   const ttable = makeTT();
   const atlasHitsBefore = ctx ? ctx.atlasHits : 0;
@@ -455,7 +499,8 @@ function runFixture(fixture, opts, ctx) {
     if (best >= WIN_SCORE - PROOF_MARGIN) tag = `PROVEN WIN (in ${WIN_SCORE - best} plies)`;
     else if (best <= -WIN_SCORE + PROOF_MARGIN) tag = `PROVEN LOSS (in ${best + WIN_SCORE} plies)`;
     const atlasNote = ctx ? `, atlas hits ${(ctx.atlasHits - atlasHitsBefore).toLocaleString()}, +${(ctx.persisted - persistedBefore).toLocaleString()} proofs` : '';
-    console.log(`  depth ${d}: ${tag}  (${nodes} nodes, TT ${ttSz}${atlasNote})`);
+    const battNote = state.batteryExt ? `, batt ext ${state.battTriggers.toLocaleString()}` : '';
+    console.log(`  depth ${d}: ${tag}  (${nodes} nodes, TT ${ttSz}${atlasNote}${battNote})`);
     if (ctx) flushAtlasWrites(ctx); // depth boundary = durable checkpoint
     // A proof is terminal — deeper iterations can only re-derive it at higher cost
     if (isProvenScore(best)) break;
