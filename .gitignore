@@ -25,3 +25,6 @@ model_*.onnx
 
 # Legacy artifact from earlier training round
 weights.json
+
+# Run PID files (machine-local)
+data/selfplay/*.pid
