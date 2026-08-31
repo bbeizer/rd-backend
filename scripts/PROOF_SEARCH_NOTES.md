@@ -190,6 +190,23 @@ Killer moves (2 slots per ply, kept across ID iterations) + global history table
 
 **⚠️ Step 3b (null-move) design decision — null-move is PROOF-UNSOUND here.** A null-move cutoff asserts "even passing wins," but the empty turn is not legal (search filters no-op outcomes) and near-zugzwang shuffle positions exist. A null-move-derived verdict must NEVER reach the atlas. If implemented, it goes behind an opt-in `--heuristic` triage mode: results reported as "likely", persistence disabled. Sound alternative for more speed: lemma-based recognizers (the six proven battery patterns as pattern-matched terminal nodes).
 
+## STEP 3c — battery-lemma leaf extension: BUILT, VERDICT = DEFAULT OFF (2026-08-31)
+
+`--batteryExt K` (default 0): at a depth-0 leaf whose board shows a penultimate-rank battery threat (any carrier on its penultimate rank + a friendly non-carrier in the opponent's half), search K extra plies instead of returning undecided. Verify-on-match — the pattern is only a trigger, verification is real search, so it is sound by construction (rootDepth bump keeps distance math exact; `inExtension` guard prevents re-extension; validated: depth-1 search returned a correctly-distanced win-in-3 score).
+
+**Gotcha found during A/B: both sides carry a ball.** First trigger version used `findBall` (returns first ball in rank order) and inspected the wrong carrier on two-ball boards. Fixed to scan every carrier. Any future board-pattern code must not assume a single ball.
+
+**A/B results (--persist 0):**
+
+| fixture | baseline | ext4 | verdict |
+|---|---|---|---|
+| WALK_77e1f2_T10of15 (won) | proves d3, ~22k nodes cum. | proves **d1**, 83k nodes | shallower nominal depth, ~4x more nodes |
+| P1_naked_f7 (defended) | d6 done, 1.28M nodes | d5 = 12.7x nodes; **d6 aborted at 21.3M** | 16x+ cost, no new verdicts |
+
+**Why the July "30–80x" hope failed:** the trigger is dense in exactly the positions this program studies — attacker-on-penultimate is nearly every leaf, so the extension pays a 4-ply verification tax on masses of non-wins. Net: sound but node-negative in both regimes tested. **Keep default off.** Salvage path if ever needed: a far tighter trigger matching the actual proven motif (uncovered adjacent goal-rank files + partner knight-reach, per the battery taxonomy above), not the loose "carrier on rank 7" condition.
+
+Also added 2026-08-31: `scripts/auditTurnGrammar.js` — replays all completed Mongo games and asserts every real turn is expressible by `generateTurnOutcomes`. Current: 18 games, 288 turns, 0 gaps. Rerun before any big proof campaign; a Step-0-class generator hole would show up here first.
+
 ## Open questions
 
 - Is the rank-7 motif actually forced, or does it require a setup phase that exploits AI weakness? Compositional proof will tell us.
