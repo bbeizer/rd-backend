@@ -108,4 +108,27 @@ describe('aiPositionStore', () => {
       store.close();
     });
   });
+
+  describe('game versioning (stale-rules proofs are invisible)', () => {
+    it('hides rows from older game versions on get/all/size', () => {
+      const store = freshStore();
+      store.put({ hash: 'old', result: 'WIN', distance: 3, source: 's', gameVersion: 1 });
+      store.put({ hash: 'new', result: 'LOSS', distance: 4, source: 's' });
+      assert.strictEqual(store.get('old'), null);
+      assert.strictEqual(store.get('new').result, 'LOSS');
+      assert.strictEqual(store.size(), 1);
+      assert.deepStrictEqual(store.all().map(r => r.hash), ['new']);
+      store.close();
+    });
+
+    it('lets a current-version write replace an old-version row even at longer distance', () => {
+      const store = freshStore();
+      store.put({ hash: 'p', result: 'WIN', distance: 2, source: 's', gameVersion: 1 });
+      store.put({ hash: 'p', result: 'LOSS', distance: 9, source: 's' });
+      const got = store.get('p');
+      assert.strictEqual(got.result, 'LOSS');
+      assert.strictEqual(got.distance, 9);
+      store.close();
+    });
+  });
 });
