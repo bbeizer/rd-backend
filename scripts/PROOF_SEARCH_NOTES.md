@@ -207,6 +207,30 @@ Killer moves (2 slots per ply, kept across ID iterations) + global history table
 
 Also added 2026-08-31: `scripts/auditTurnGrammar.js` — replays all completed Mongo games and asserts every real turn is expressible by `generateTurnOutcomes`. Current: 18 games, 288 turns, 0 gaps. Rerun before any big proof campaign; a Step-0-class generator hole would show up here first.
 
+## ✅ STEP 4 — DONE (2026-09-01): atlas seed run 1 (walk-backs re-proven under real rules)
+
+`scripts/runAtlasSeed.zsh`, 18:08→05:50 (11h42m), all phases exit 0. Atlas: 0 → **5,295,738 v2 proofs**. Full log: `data/selfplay/atlas_seed_run1.log`.
+
+**Blunder boundaries (rootColor = white = human in all five):**
+
+| game | proven-white-win onset | dead zone (undecided) | notes |
+|---|---|---|---|
+| 77e1f2 | **T8, win in 11** — deepest certified proof yet (T9@d10 + atlas chain) | T5–T7 | real-rules confirmation of the July reduced-game "dead from T8" |
+| ce0f5f | T8, win in 5 | T5–T7 | |
+| a822c5 | T12, win in 7 | T2–T4 | **T5–T11 = proven BLACK win** (loss-in-13 → loss-in-5) |
+| b33b02 | T10, win in 5 | T7–T9 | |
+| b36806 | T10, win in 5 | T4–T6 | **T7–T9 = proven BLACK win** (loss-in-11 → loss-in-7) |
+
+**Finding 1 — the impossible AI blundered away certified forced wins.** a822c5: black (AI) held a forced win for SEVEN consecutive turns (T5–T11, down to win-in-5) and lost the thread at T12. b36806: same shape, T7–T9. So of the 5 human wins: 1 genuinely forced by the human (77e1f2 T9 = white win-in-10), 2 were counterpunches after the AI squandered a proven win, 2 undecided at the probe turn. Resolves the "actually-forced or blunder?" open question: **both, mixed**.
+
+**Finding 2 — proven BLACK forced wins exist in real middlegames.** Revises the white-tempo-asymmetry doctrine: black's counter-attack machinery is provably sufficient in real positions (the same mechanism BEN_blackPenult_d4e2 uses). Follow-up worth doing: extract black's winning method from the a822c5 T5–T11 proofs (atlas has the full certified tree + best moves) — it is a machine-certified black attack plan.
+
+**Finding 3 — BEN_blackPenult_d4e2 HELD through completed d8** (4h budget, 27.8M nodes, d9 aborted on time; white's best try at d8: d3→e5). July's best was completed d7 — the defense survived a deeper probe *with a 5M-proof atlas helping white*. Still the strongest known defense; still the main evidence the game may not be a forced white win.
+
+**Cross-checks passed:** REAL_* fixtures and WALK_* fixtures agree at every overlapping position (e.g. REAL_a822c5_T11of17 = loss-in-5 at depth 1 via atlas, matching WALK_a822c5_T11of17 proved independently); 3 of 5 REAL fixtures resolved at depth 1 by pure atlas lookup — cross-run compositional chaining works.
+
+Next per program: **Step 5 — summit attempt** (or first: dedicated d9+ run on BEN_blackPenult_d4e2, and mine the a822c5 black win for the defense method).
+
 ## Open questions
 
 - Is the rank-7 motif actually forced, or does it require a setup phase that exploits AI weakness? Compositional proof will tell us.
