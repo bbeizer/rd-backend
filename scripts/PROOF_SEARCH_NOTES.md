@@ -231,6 +231,30 @@ Also added 2026-08-31: `scripts/auditTurnGrammar.js` — replays all completed M
 
 Next per program: **Step 5 — summit attempt** (or first: dedicated d9+ run on BEN_blackPenult_d4e2, and mine the a822c5 black win for the defense method).
 
+## ✅ STEP 4b — DONE (2026-09-03): dedicated BEN_blackPenult_d4e2 deep probe (d9–d11)
+
+Two runs of `scripts/runBenD11.zsh` (fixture `data/selfplay/ben_hypothesis_d11.json`, pinned maxDepth 11, 12h budget, atlas-assisted). Log: `data/selfplay/ben_d11_run.log`.
+
+**Run 1 (Sep 1 21:07 → 22:55): killed by full disk.** Machine-wide disk exhaustion (226MB free), `SQLITE_FULL` during an atlas flush mid-d9. d1–d8 all undecided (d8: 13.3M nodes). Transaction rolled back cleanly; ~80K proofs from completed flushes survived at the time.
+
+**⚠️ Atlas loss discovered (Sep 3).** The original `data/positions.db` (780M, **5,295,738 seed proofs**) was deleted externally between Sep 2 16:08 and 17:32 — the replacement file's birth timestamp is 17:32:25, the exact second run 2 launched, and run 2's header reads "atlas: 0 proven positions loaded". No code in this repo deletes the DB; Trash empty; local TM snapshots all postdate the deletion (likely a disk-space cleanup casualty — the disk was at 100% that day). A Seagate TM drive may hold a copy if a Sep 1–2 backup exists. **All seed-run verdicts survive in these notes and in `atlas_seed_run1.log`; only the reusable proof cache was lost** — regenerable via `runAtlasSeed.zsh` (~12h). Ops lesson: `data/*.db` looks like a fat deletable blob to cleanup tools; back it up or gitignore-annotate it as precious.
+
+**Run 2 (Sep 2 17:32 → Sep 3 08:16, exit 0): the result — UNDECIDED through completed d10.**
+
+| depth | nodes | intra-run atlas hits | +proofs |
+|---|---|---|---|
+| d8 | 18.0M | 297K | +180K |
+| d9 | 50.5M | 544K | +390K |
+| d10 | 284.0M | 5.86M | +3.97M |
+| d11 | aborted on time at 537.6M | — | — |
+
+- **The d4→e2 defense now holds through 10 completed plies** — 3 deeper than July (d7), 2 deeper than the seed run (d8). Still the strongest known defense in any real-game branch, still the main evidence the game may not be a forced white win.
+- **Independent replication, accidentally.** Because the atlas loaded empty, run 2 re-derived everything from scratch — d1–d10 undecided with zero inherited proofs. The seed-run d8 verdict and this run agree. Intra-run compositional chaining alone (5.86M leaf hits at d10) made d10 reachable overnight; killers + bound-flagged TT carried the rest.
+- Atlas after run: **6,178,671 v2 proofs**, all from this position's subtree.
+- Budget math confirmed the cost model: d1–d10 ≈ 11h; d11 wanted ~3x more than the ~5h it got.
+
+**Program status: PARKED (wrap-up mode, decided 2026-09-03).** Closing verdict for the solvability program: the decision frontier for real-game positions sits beyond depth 10 per overnight run; BEN_blackPenult_d4e2 undecided at every reachable depth; the summit attempt (Step 5) is not being pursued. Remaining engine work shifts to the live AI: move-latency tuning and the penultimate-motif defense.
+
 ## Open questions
 
 - Is the rank-7 motif actually forced, or does it require a setup phase that exploits AI weakness? Compositional proof will tell us.

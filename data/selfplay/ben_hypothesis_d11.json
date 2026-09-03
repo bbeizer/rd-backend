@@ -1,0 +1,115 @@
+[
+  {
+    "name": "BEN_blackPenult_d4e2",
+    "desc": "Game2 T6-alt: black plays d4->e2 + pass e8->e2 instead of c8->d6. Black ball on rank 2, garrison c8/d8/e8 home. White to move. Is black STILL lost? (d11 overnight probe 2026-09-01, atlas-assisted)",
+    "board": {
+      "a1": null,
+      "b1": null,
+      "c1": null,
+      "d1": null,
+      "e1": {
+        "color": "white",
+        "hasBall": false,
+        "position": "e1",
+        "id": "w_e1"
+      },
+      "f1": {
+        "color": "white",
+        "hasBall": false,
+        "position": "f1",
+        "id": "w_f1"
+      },
+      "g1": null,
+      "h1": null,
+      "a2": null,
+      "b2": null,
+      "c2": null,
+      "d2": null,
+      "e2": {
+        "color": "black",
+        "hasBall": true,
+        "position": "e2",
+        "id": "B_e2"
+      },
+      "f2": null,
+      "g2": null,
+      "h2": null,
+      "a3": null,
+      "b3": null,
+      "c3": null,
+      "d3": {
+        "color": "white",
+        "hasBall": false,
+        "position": "d3",
+        "id": "w_d3"
+      },
+      "e3": null,
+      "f3": null,
+      "g3": null,
+      "h3": null,
+      "a4": null,
+      "b4": null,
+      "c4": null,
+      "d4": null,
+      "e4": null,
+      "f4": null,
+      "g4": null,
+      "h4": null,
+      "a5": null,
+      "b5": null,
+      "c5": null,
+      "d5": null,
+      "e5": null,
+      "f5": {
+        "color": "white",
+        "hasBall": true,
+        "position": "f5",
+        "id": "W_f5"
+      },
+      "g5": null,
+      "h5": null,
+      "a6": null,
+      "b6": null,
+      "c6": null,
+      "d6": null,
+      "e6": null,
+      "f6": null,
+      "g6": null,
+      "h6": null,
+      "a7": null,
+      "b7": null,
+      "c7": null,
+      "d7": null,
+      "e7": null,
+      "f7": null,
+      "g7": null,
+      "h7": null,
+      "a8": null,
+      "b8": null,
+      "c8": {
+        "color": "black",
+        "hasBall": false,
+        "position": "c8",
+        "id": "b_c8"
+      },
+      "d8": {
+        "color": "black",
+        "hasBall": false,
+        "position": "d8",
+        "id": "b_d8"
+      },
+      "e8": {
+        "color": "black",
+        "hasBall": false,
+        "position": "e8",
+        "id": "b_e8"
+      },
+      "f8": null,
+      "g8": null,
+      "h8": null
+    },
+    "sideToMove": "white",
+    "rootColor": "white",
+    "maxDepth": 11
+  }
+]
