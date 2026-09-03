@@ -468,6 +468,7 @@ function runFixture(fixture, opts, ctx) {
   let lastResult = null;
   let lastCompletedDepth = 0;
   let bestMoveAtLast = null;
+  let bestBoardAtLast = null;
 
   const maxDepth = fixture.maxDepth || opts.maxDepth;
   for (let d = 1; d <= maxDepth; d++) {
@@ -480,11 +481,12 @@ function runFixture(fixture, opts, ctx) {
 
     let best = isMax ? -Infinity : Infinity;
     let bestMove = null;
+    let bestBoard = null;
     let aborted = false;
     for (const outcome of orderedRoot) {
       const r = proofSearch(outcome.board, d - 1, -Infinity, Infinity, !isMax, fixture.rootColor, nextSide, ttable, state);
       if (r.aborted) { aborted = true; break; }
-      if (isMax ? r.score > best : r.score < best) { best = r.score; bestMove = outcome.moves; }
+      if (isMax ? r.score > best : r.score < best) { best = r.score; bestMove = outcome.moves; bestBoard = outcome.board; }
     }
     if (aborted) {
       console.log(`  depth ${d}: aborted (time up at ${state.nodes.toLocaleString()} nodes)`);
@@ -493,6 +495,7 @@ function runFixture(fixture, opts, ctx) {
     lastResult = best;
     lastCompletedDepth = d;
     bestMoveAtLast = bestMove;
+    bestBoardAtLast = bestBoard;
     const nodes = state.nodes.toLocaleString();
     const ttSz = ttSize(ttable).toLocaleString();
     let tag = 'undecided';
@@ -523,7 +526,7 @@ function runFixture(fixture, opts, ctx) {
 
   console.log(`final: depth ${lastCompletedDepth}, score ${lastResult}`);
   if (bestMoveAtLast) console.log(`best move: ${describeMoves(bestMoveAtLast)}`);
-  return { name: fixture.name, depth: lastCompletedDepth, score: lastResult };
+  return { name: fixture.name, depth: lastCompletedDepth, score: lastResult, bestMoves: bestMoveAtLast, bestBoard: bestBoardAtLast };
 }
 
 function openAtlas(opts) {
@@ -601,4 +604,9 @@ module.exports = {
   isProvenScore,
   atlasRecToScore,
   provenPersistEntry,
+  runFixture,
+  openAtlas,
+  closeAtlas,
+  render,
+  describeMoves,
 };

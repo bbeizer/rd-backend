@@ -253,7 +253,21 @@ Two runs of `scripts/runBenD11.zsh` (fixture `data/selfplay/ben_hypothesis_d11.j
 - Atlas after run: **6,178,671 v2 proofs**, all from this position's subtree.
 - Budget math confirmed the cost model: d1–d10 ≈ 11h; d11 wanted ~3x more than the ~5h it got.
 
-**Program status: PARKED (wrap-up mode, decided 2026-09-03).** Closing verdict for the solvability program: the decision frontier for real-game positions sits beyond depth 10 per overnight run; BEN_blackPenult_d4e2 undecided at every reachable depth; the summit attempt (Step 5) is not being pursued. Remaining engine work shifts to the live AI: move-latency tuning and the penultimate-motif defense.
+**Program status: PARKED (wrap-up mode, decided 2026-09-03).** ~~Closing verdict: BEN_blackPenult_d4e2 undecided at every reachable depth~~ — **superseded same day, see postscript below.**
+
+## 🔥 POSTSCRIPT (2026-09-03, hours later): BEN_blackPenult_d4e2 is a PROVEN WHITE WIN in 11 plies
+
+While extracting the best-play line for display, a depth-1 atlas-assisted re-search of the root returned **PROVEN WIN in 11 plies, best move d3→e5** — and an independent fresh run confirmed it (86 nodes, 69 atlas hits, instant).
+
+**How "undecided at d10" and "proven win in 11" are both true:** the win needs 11 plies, so the completed d10 iteration couldn't see it. The d11 iteration aborted on time at 537M nodes — *after* persisting the certifying sub-proofs to the atlas but *before* finishing the root move loop that would have announced the verdict. The proofs were sitting in the DB all along; nobody had asked the root again. **Method lesson: after any time-aborted deep run, immediately re-probe the root at depth 1–2 — the partial iteration's persisted proofs may already decide it.** (Corollary: run 2's from-scratch rebuild wasn't just replication — its d11 partial did the decisive work the seed-assisted run 1 never reached.)
+
+**Soundness of the certificate:** every min-node (black to move) step in the chain proved at d1, meaning *every* black reply hits a certified atlas refutation — complete defenses are refuted, not sampled. The traced line is monotone (win-in-11 → 10 → … → 1 → terminal) and ends in an on-board white delivery: `…move e5→g6, e8→g7, move g6→f8 + pass f5→f8` — the two-piece battery motif executing exactly as the lemma taxonomy predicts. Black's actual defense collapsed at the traced ply 6 (b6→c4 + pass e2→c4 — the counter-race attempt is provably too slow). Root proof + best move persisted to the atlas.
+
+**Implications:**
+- The strongest known defense in any real-game branch is dead. The fixture's question — "is black STILL lost?" — is answered: **yes, proven.**
+- This removes the main real-game evidence *against* the forced-white-win hypothesis. The surviving counter-evidence is only the synthetic P1/P2/P4 fixtures (undecided d8–9, properly-stationed garrison, never displaced).
+- The "fortress tax" read of this position was wrong at depth: white's provably best move is the *aggressive* d3→e5, not the defensive replies seen at d7/d8.
+- Program remains parked, but the parking verdict improves from "frontier beyond reach, undecided" to "strongest defense refuted; summit attempt remains the only open question."
 
 ## Open questions
 
