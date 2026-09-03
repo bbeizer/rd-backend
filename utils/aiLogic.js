@@ -93,7 +93,12 @@ const DIFFICULTY_CONFIGS = {
   // depth-4 'advanced' hard tier. Was previously shipped as `impossible`.
   hard: { depth: 8, evalFn: 'impossible', topN: 1, timeLimitMs: 6000, pvs: true, lmr: true, quiescence: true },
   // Promoted: combo_big NN (beat B-Rabbit 7-1 in dojo) is now the top tier.
-  impossible: { depth: 8, evalFn: 'nn', topN: 1, timeLimitMs: 6000, pvs: true, lmr: true, quiescence: true },
+  // winScreen: 1s B-Rabbit forced-win pre-search (see makeAIMove) — the NN
+  // misses forced wins inside its horizon that the cheap eval proves instantly.
+  // Budget split keeps worst-case latency at ~6s: 3.5s screen (proves the
+  // win-in-5 class, measured 3.2s on the BEN p6 node) + 2.5s NN (dojo showed
+  // the NN holds strength at short budgets).
+  impossible: { depth: 8, evalFn: 'nn', topN: 1, timeLimitMs: 2500, pvs: true, lmr: true, quiescence: true, winScreen: true, winScreenMs: 3500 },
   // Alias of the new `impossible`. Kept for dojo/benchmark scripts that
   // reference `impossible_nn` by name.
   impossible_nn: { depth: 8, evalFn: 'nn', topN: 1, timeLimitMs: 6000, pvs: true, lmr: true, quiescence: true },
@@ -103,6 +108,8 @@ const DIFFICULTY_CONFIGS = {
   impossible_legacy: { depth: 8, evalFn: 'impossible', topN: 1, timeLimitMs: 4000, pvs: true, lmr: true, quiescence: true, weightsKey: 'legacy' },
   impossible_atomic: { depth: 8, evalFn: 'atomic', topN: 1, timeLimitMs: 6000, pvs: true, lmr: true, quiescence: true, weightsKey: 'atomic' },
   impossible_nn_b: { depth: 8, evalFn: 'nn_b', topN: 1, timeLimitMs: 6000, pvs: true, lmr: true, quiescence: true },
+  // Latency A/B: shipped impossible at a 2s budget instead of 6s.
+  impossible_fast: { depth: 8, evalFn: 'nn', topN: 1, timeLimitMs: 2000, pvs: true, lmr: true, quiescence: true, winScreen: true, winScreenMs: 1000 },
 };
 
 // ============================================
@@ -567,20 +574,62 @@ function makeAIMove(game, difficulty = 'medium', opts = {}) {
     weights,
   } : null;
 
+  let result;
+  let lastCompletedDepth = 0;
+  let screenWin = false;
+
+  // Forced-win screen (NN tiers): a short heuristic pre-search trusted ONLY
+  // when it proves a win (score at the INFINITY threshold). NN inference cost
+  // buys fewer nodes per second, so the NN tier can miss forced wins inside
+  // its nominal depth that the cheap eval finds instantly — certified example:
+  // the BEN-line win-in-5 (e5→g6), found by B-Rabbit at 6s, missed by
+  // combo_big at 6s. A screen hit bypasses the main search entirely; anything
+  // short of a proven win is discarded.
+  if (config.winScreen) {
+    const screenTT = new Map();
+    const screenState = {
+      deadline: Date.now() + (config.winScreenMs || 1000),
+      nodesSearched: 0,
+      timeUp: false,
+      pvs: true,
+      lmr: true,
+      quiescence: true,
+      weights: undefined, // B-Rabbit defaults
+    };
+    for (let d = 1; d <= (config.winScreenDepth || config.depth); d++) {
+      const r = minimax(
+        board, d, -Infinity, Infinity,
+        true, aiColor, aiColor, 'impossible', screenTT, screenState
+      );
+      if (r.aborted) break;
+      if (r.score >= AI_CONFIG.INFINITY - 100) {
+        result = r;
+        lastCompletedDepth = d;
+        screenWin = true;
+        break;
+      }
+    }
+  }
+
   // Iterative deepening minimax for all difficulty levels.
   // Search depth 1, 2, ..., N. Shallower results fill the transposition table,
   // giving better move ordering at deeper levels → more alpha-beta cutoffs.
   // When time-budgeted, break on timeout and use the last fully-completed depth.
-  let result;
-  let lastCompletedDepth = 0;
-  for (let d = 1; d <= config.depth; d++) {
-    const r = minimax(
-      board, d, -Infinity, Infinity,
-      true, aiColor, aiColor, config.evalFn, ttable, searchState
-    );
-    if (r.aborted) break;
-    result = r;
-    lastCompletedDepth = d;
+  if (!screenWin) {
+    // The screen consumed wall time after searchState.deadline was computed;
+    // restart the clock so the main search gets its full configured budget.
+    if (searchState && config.timeLimitMs) {
+      searchState.deadline = Date.now() + config.timeLimitMs;
+    }
+    for (let d = 1; d <= config.depth; d++) {
+      const r = minimax(
+        board, d, -Infinity, Infinity,
+        true, aiColor, aiColor, config.evalFn, ttable, searchState
+      );
+      if (r.aborted) break;
+      result = r;
+      lastCompletedDepth = d;
+    }
   }
 
   // Safety net: if even depth 1 timed out (shouldn't happen with reasonable budget),
@@ -599,7 +648,7 @@ function makeAIMove(game, difficulty = 'medium', opts = {}) {
   const topNGap = (typeof opts.topNGap === 'number') ? opts.topNGap : 3.0;
   const ROOT_INF_THRESHOLD = AI_CONFIG.INFINITY - 100;
 
-  if (effectiveTopN > 1) {
+  if (effectiveTopN > 1 && !screenWin) {
     // Score all root outcomes at full depth, pick randomly from top N.
     // The TT is already warmed from iterative deepening so this is fast.
     const outcomes = generateTurnOutcomes(board, aiColor);

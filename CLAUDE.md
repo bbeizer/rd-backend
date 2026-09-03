@@ -57,7 +57,7 @@ The AI lives in `utils/aiLogic.js` — minimax with alpha-beta pruning, iterativ
 | easy | 1 | simple | 3 | Random pick among top 3 — beginner-friendly variance |
 | medium | 3 | standard | 2 | Random pick among top 2 |
 | hard | 8 | impossible | 1 | 6s time budget, PVS + LMR + quiescence — "B-Rabbit" lean eval (promoted from `impossible`) |
-| impossible | 8 | nn | 1 | 6s time budget, PVS + LMR + quiescence — combo_big MLP (beat B-Rabbit 7-1) |
+| impossible | 8 | nn | 1 | Hybrid (2026-09-03): 3.5s B-Rabbit forced-win screen + 2.5s combo_big NN. Beat pure 6s NN 4-0 (won both colors). Screen result trusted only when it PROVES a win; fixes the NN's diagnosed blind spot (misses forced wins inside its horizon — NN inference cost buys fewer nodes/s) |
 
 **Search enhancements (impossible mode only) — plain English:**
 - **PVS (Principal Variation Search)** — Assume the first move in the ordered list is best. Search it with the full window, then search all others with a cheap "null window" that only asks "is this better than the first?" Re-search at full window only if one of them surprises us. Faster than vanilla alpha-beta when move ordering is good.
